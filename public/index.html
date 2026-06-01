@@ -108,6 +108,21 @@
       }
       .doc table.info td { font-size: 7.2pt; }
       .doc table.choice td { font-size: 7.3pt; }
+      .doc h3 { page-break-after: avoid; break-after: avoid; }
+      .signature-block {
+        page-break-inside: avoid;
+        break-inside: avoid;
+        margin-top: 6px;
+      }
+      .signature-block h3 { margin-top: 0; }
+      .signature-block table { margin-bottom: 0; }
+      #doc-pickup .doc-label,
+      #doc-pickup .source-name { margin-bottom: 3px; }
+      #doc-pickup h2 { font-size: 12pt; margin-bottom: 6px; }
+      #doc-pickup h3 { font-size: 8.4pt; margin: 7px 0 4px; }
+      #doc-pickup p { font-size: 7pt; line-height: 1.16; margin: 3px 0; }
+      #doc-pickup table { margin: 5px 0 7px; }
+      #doc-pickup td { font-size: 6.7pt; line-height: 1.12; padding: 3px 4px; }
     }
   </style>
 </head>
@@ -320,12 +335,23 @@
       document.getElementById('docNav').innerHTML = ORIGINAL_DOCS.map((doc, i) => `<a href="#doc-${doc.key}">${i + 1}. ${DOC_TITLES[doc.key]}</a>`).join('');
       document.getElementById('docs').innerHTML = ORIGINAL_DOCS.map((doc, i) => {
         let firstParagraph = true;
-        const body = doc.blocks.map(block => {
-          if (block.type === 'table') return renderTable(block.rows);
+        const parts = [];
+        for (let blockIndex = 0; blockIndex < doc.blocks.length; blockIndex++) {
+          const block = doc.blocks[blockIndex];
+          if (block.type === 'table') {
+            parts.push(renderTable(block.rows));
+            continue;
+          }
+          if (block.text.trim() === 'SIGNATURES / FIRMAS' && doc.blocks[blockIndex + 1]?.type === 'table') {
+            parts.push(`<section class="signature-block">${renderParagraph(block.text, false)}${renderTable(doc.blocks[blockIndex + 1].rows)}</section>`);
+            blockIndex++;
+            continue;
+          }
           const html = renderParagraph(block.text, firstParagraph);
           if (firstParagraph) firstParagraph = false;
-          return html;
-        }).join('');
+          parts.push(html);
+        }
+        const body = parts.join('');
         return `<article class="doc" id="doc-${doc.key}"><div class="doc-label">Documento ${i + 1} de ${ORIGINAL_DOCS.length}</div><div class="source-name">Original: ${esc(doc.name)}</div>${body}</article>`;
       }).join('');
     }
