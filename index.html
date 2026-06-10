@@ -72,7 +72,7 @@
       .doc td { display: block; width: 100%; }
     }
     @media print {
-      @page { size: letter; margin: .45in; }
+      @page { size: letter; margin: .32in; }
       html, body {
         background: #fff;
         -webkit-print-color-adjust: exact;
@@ -96,29 +96,43 @@
         page-break-after: auto;
         break-after: auto;
       }
-      .doc-label, .source-name { font-size: 7pt; margin: 0 0 5px; line-height: 1.1; }
-      .doc h2 { font-size: 13pt; line-height: 1.15; margin: 0 0 9px; }
-      .doc h3 { font-size: 9pt; line-height: 1.16; margin: 10px 0 5px; }
-      .doc p { font-size: 7.4pt; line-height: 1.24; margin: 4px 0; }
-      .integration-note { font-size: 6.5pt; line-height: 1.15; padding: 4px 5px; margin: 4px 0 6px; }
-      .doc table { margin: 7px 0 10px; table-layout: fixed; page-break-inside: auto; break-inside: auto; }
+      .doc-label, .source-name { display: none; }
+      .doc h2 { font-size: 12pt; line-height: 1.12; margin: 0 0 6px; }
+      .doc h3 { font-size: 8.3pt; line-height: 1.12; margin: 7px 0 3px; }
+      .doc p { font-size: 6.9pt; line-height: 1.16; margin: 3px 0; }
+      .integration-note {
+        border: 0;
+        background: transparent;
+        font-size: 5.8pt;
+        line-height: 1.05;
+        padding: 0;
+        margin: 0 0 5px;
+        color: #4b5870;
+      }
+      .doc table { margin: 5px 0 7px; table-layout: fixed; page-break-inside: auto; break-inside: auto; }
       .doc tr { page-break-inside: avoid; break-inside: avoid; }
       .doc td {
-        padding: 4px 5px;
-        font-size: 7pt;
-        line-height: 1.18;
+        padding: 3px 4px;
+        font-size: 6.55pt;
+        line-height: 1.12;
         border-color: #b8c2d1;
       }
-      .doc table.info td { font-size: 7.2pt; }
-      .doc table.choice td { font-size: 7.3pt; }
+      .doc table.info td { font-size: 6.7pt; }
+      .doc table.choice td { font-size: 6.8pt; }
       .doc h3 { page-break-after: avoid; break-after: avoid; }
       .signature-block {
-        page-break-inside: avoid;
-        break-inside: avoid;
-        margin-top: 6px;
+        page-break-before: avoid;
+        break-before: avoid;
+        page-break-inside: auto;
+        break-inside: auto;
+        margin-top: 3px;
       }
       .signature-block h3 { margin-top: 0; }
-      .signature-block table { margin-bottom: 0; }
+      .signature-block table {
+        page-break-inside: avoid;
+        break-inside: avoid;
+        margin-bottom: 0;
+      }
       #doc-pickup .doc-label,
       #doc-pickup .source-name { margin-bottom: 3px; }
       #doc-pickup h2 { font-size: 12pt; margin-bottom: 6px; }
@@ -126,6 +140,21 @@
       #doc-pickup p { font-size: 7pt; line-height: 1.16; margin: 3px 0; }
       #doc-pickup table { margin: 5px 0 7px; }
       #doc-pickup td { font-size: 6.7pt; line-height: 1.12; padding: 3px 4px; }
+      #doc-conditional h2,
+      #doc-communication h2,
+      #doc-creditapp h2 { font-size: 10.8pt; margin-bottom: 4px; }
+      #doc-conditional h3,
+      #doc-communication h3,
+      #doc-creditapp h3 { font-size: 7.6pt; margin: 5px 0 2px; }
+      #doc-conditional p,
+      #doc-communication p,
+      #doc-creditapp p { font-size: 6.4pt; line-height: 1.1; margin: 2px 0; }
+      #doc-conditional table,
+      #doc-communication table,
+      #doc-creditapp table { margin: 3px 0 5px; }
+      #doc-conditional td,
+      #doc-communication td,
+      #doc-creditapp td { font-size: 6.1pt; line-height: 1.07; padding: 2px 3px; }
     }
   </style>
 </head>
@@ -237,7 +266,7 @@
       communication: 'Communication Authorization',
       creditapp: 'Credit Application'
     };
-    const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO\nThis document is an integral part of the signed vehicle sale, financing, or related transaction documents. / Este documento forma parte integrante de los documentos firmados de venta, financiamiento o transaccion relacionada del vehiculo.';
+    const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO';
     const pickupIds = Array.from({ length: 10 }, (_, i) => i + 1).flatMap(i => [`pickup_date_${i}`, `pickup_amount_${i}`, `pickup_receipt_${i}`]);
     const ids = [
       'first_name','middle_name','last_name','second_last_name','co_buyer_name','address','city','state','zip_code','customer_email','phone','alternate_phone','driver_license',
