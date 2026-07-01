@@ -2,6 +2,14 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "functions": {
+    "api/signature/create.js": {
+      "maxDuration": 30
+    },
+    "api/signature/webhook.js": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",

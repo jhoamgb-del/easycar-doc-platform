@@ -1,49 +1,72 @@
 # EasyCar Document Platform
 
-Plataforma web para llenar e imprimir documentos de ventas EasyCar desde una sola pantalla.
+Sistema para preparar, guardar, imprimir y firmar documentos de ventas EasyCar.
 
-## Estado actual
+## Flujos preparados
 
-- Lista para publicar en Vercel como pagina estatica.
-- El logo esta incluido dentro de `index.html`.
-- No necesita servidor para llenar e imprimir.
-- Puede guardar ventas en Supabase cuando se configuran `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
-- Incluye 10 documentos:
-  - GPS Disclosure
-  - GPS Fee Notice
-  - Maintenance Package
-  - Personal Vehicle Use
-  - Vehicle History / CARFAX
-  - Credit Card Authorization
-  - Pick-Up Payment
-  - Conditional Delivery
-  - Communication Authorization
-  - Credit Application
+### Firma digital
 
-## Siguiente paso recomendado
+1. El vendedor inicia sesion con un enlace enviado a su correo.
+2. Llena y guarda la venta en Supabase.
+3. Selecciona **Enviar para firma digital**.
+4. El servidor crea una solicitud privada en DocuSeal y envia el enlace al cliente.
+5. DocuSeal informa eventos de apertura, firma o rechazo mediante webhook.
+6. El PDF firmado se descarga y archiva en Supabase Storage.
 
-1. Subir este proyecto a GitHub.
-2. Conectar el repositorio en Vercel.
-3. Publicar.
-4. Crear proyecto Supabase.
-5. Aplicar `supabase/schema.sql`.
-6. Configurar variables de entorno en Vercel.
+### Firma fisica
 
-## Comandos
+1. El vendedor llena la venta.
+2. Selecciona **Imprimir para firma fisica**.
+3. El sistema imprime el paquete completo con los datos ya colocados.
+4. El cliente firma manualmente los documentos impresos.
+
+## Componentes
+
+- Vercel: sitio y servicios privados.
+- Supabase Auth: acceso de vendedores.
+- Supabase Postgres: ventas, estados y auditoria.
+- Supabase Storage: documentos firmados digitalmente y archivos privados.
+- DocuSeal: solicitud y registro de firma electronica.
+
+## Puesta en marcha
+
+1. Crear un proyecto en Supabase.
+2. Ejecutar `supabase/schema.sql` en Supabase SQL Editor.
+3. Configurar el proveedor de correo de Supabase Auth y las URLs permitidas.
+4. Crear el primer usuario y promoverlo a administrador:
+
+```sql
+update public.profiles
+set role = 'admin'
+where id = 'USER_UUID';
+```
+
+5. Preparar la plantilla DocuSeal siguiendo `docs/DOCUSEAL_TEMPLATE.md`.
+6. Agregar en Vercel todas las variables descritas en `.env.example`.
+7. Crear el webhook DocuSeal apuntando a:
+
+```text
+https://easycar-doc.vercel.app/api/signature/webhook
+```
+
+8. Volver a desplegar el proyecto en Vercel.
+
+## Seguridad
+
+- La llave `SUPABASE_SERVICE_ROLE_KEY` y la llave de DocuSeal son solo del servidor.
+- Los vendedores ven sus propias ventas.
+- Gerentes y administradores pueden ver todas las ventas.
+- Los documentos se guardan en un bucket privado.
+- Los enlaces de firma se crean para un cliente especifico y requieren verificacion por correo.
+- El guardado local del navegador se mantiene solo como respaldo temporal.
+
+## Desarrollo
 
 ```bash
 npm install
+npm run check
 npm run dev
 npm run build
 ```
 
-## Variables de entorno
-
-```bash
-VITE_SUPABASE_URL=https://TU-PROYECTO.supabase.co
-VITE_SUPABASE_ANON_KEY=TU_SUPABASE_ANON_KEY
-```
-
-## Nota
-
-La version actual guarda cliente, vehiculo y la sesion completa del formulario. El historial administrativo y busqueda de ventas debe agregarse despues con acceso controlado.
+Sin credenciales, la aplicacion sigue permitiendo llenar, guardar localmente e imprimir. Las funciones centrales permanecen desactivadas.
