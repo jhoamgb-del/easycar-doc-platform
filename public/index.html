@@ -274,7 +274,7 @@
         <label>Millas <input id="vehicle_mileage"></label>
         <label>Stock number <input id="stock_number"></label>
         <label>Contrato <input id="contract_number"></label>
-        <label>Fecha de venta <input id="transaction_date" type="date"></label>
+        <label>Fecha de venta <input id="transaction_date" type="date" readonly></label>
 
         <div class="section-title">Venta y pago</div>
         <label>Vendedor <input id="sales_rep_name"></label>
@@ -290,13 +290,13 @@
         <label class="full">Condiciones / notas <textarea id="price_payment_terms"></textarea></label>
 
         <div class="section-title">Entrega condicional</div>
-        <label>Fecha de entrega <input id="conditional_delivery_date" type="date"></label>
+        <label>Fecha de entrega <input id="conditional_delivery_date" type="date" readonly></label>
         <label>Fecha limite 10 dias <input id="conditional_deadline" readonly></label>
 
         <div class="section-title">Pick-Up Payment / Pago inicial diferido</div>
         <label>Monto total del down <input id="pickup_down_total"></label>
         <label>Monto a financiar <input id="pickup_finance_amount"></label>
-        <label>Fecha primer pago <input id="pickup_start_date" type="date"></label>
+        <label>Fecha primer pago <input id="pickup_start_date" type="date" readonly></label>
         <label>Cantidad de pagos <select id="pickup_payment_count"><option value="1">1 semana</option><option value="2">2 semanas</option><option value="3">3 semanas</option><option value="4">4 semanas</option><option value="5">5 semanas</option><option value="6">6 semanas</option><option value="7">7 semanas</option><option value="8">8 semanas</option><option value="9">9 semanas</option><option value="10" selected>10 semanas</option><option value="11">11 semanas</option><option value="12">12 semanas</option></select></label>
         <label>Frecuencia <select id="pickup_frequency"><option value="Weekly">Semanal</option><option value="Bi-Weekly">Bi-semanal</option><option value="Monthly">Mensual</option></select></label>
         <div class="schedule-grid">
@@ -394,8 +394,8 @@
       const saleDateInput = $('transaction_date');
       if (saleDateInput && !saleDateInput.value) saleDateInput.value = todayInputValue();
       const saleDate = val('transaction_date') || todayInputValue();
-      if ($('conditional_delivery_date') && !val('conditional_delivery_date')) $('conditional_delivery_date').value = saleDate;
-      if ($('pickup_start_date') && !val('pickup_start_date')) $('pickup_start_date').value = saleDate;
+      if ($('conditional_delivery_date')) $('conditional_delivery_date').value = saleDate;
+      syncPickupStartDate();
     }
     function dateValue(id) {
       ensureDefaultDates();
@@ -443,11 +443,26 @@
       next.setDate(Math.min(day, lastDay));
       return next;
     }
+    function inputValueFromDate(date) {
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+    function firstPickupDateFromSale() {
+      const saleDate = parseDateInput('transaction_date') || new Date();
+      const frequency = val('pickup_frequency') || 'Weekly';
+      if (frequency === 'Bi-Weekly') return addDays(saleDate, 14);
+      if (frequency === 'Monthly') return addMonths(saleDate, 1);
+      return addDays(saleDate, 7);
+    }
+    function syncPickupStartDate() {
+      const pickupInput = $('pickup_start_date');
+      if (pickupInput) pickupInput.value = inputValueFromDate(firstPickupDateFromSale());
+    }
     function syncSaleDates() {
       const saleDate = val('transaction_date');
       if (!saleDate) return;
       $('conditional_delivery_date').value = saleDate;
-      $('pickup_start_date').value = saleDate;
+      syncPickupStartDate();
     }
     function updatePaymentRows(count) {
       const children = Array.from(document.querySelectorAll('.schedule-grid > *')).slice(4);
@@ -544,6 +559,10 @@
     function fillText(text) {
       let out = String(text || '');
       const transactionDate = dateValue('transaction_date');
+      const customerName = fullName();
+      const salesRepName = val('sales_rep_name');
+      const cardholderName = val('cardholder_name') || customerName;
+      const dealerSignatureCell = /EASYCAR LLC REP|DEALER REPRESENTATIVE|POR EASYCAR LLC/.test(out);
       out = markChoices(out);
       out = out.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (_, key) => tokenValue(key));
       if (out.trim().startsWith('Stock Number:')) {
@@ -558,8 +577,16 @@
         out = out.replace(multiline, `${label} ${value}`);
         out = out.replace(inline, `${label} ${value}`);
       }
-      out = out.replace(/Name\/Nombre:\s*_{5,}/g, `Name/Nombre: ${fullName()}`);
-      out = out.replace(/Name:\s*_{5,}/g, `Name: ${val('sales_rep_name')}`);
+      out = out.replace(/Printed Name \/ Nombre Impreso:\s*_{3,}/g, `Printed Name / Nombre Impreso: ${dealerSignatureCell ? salesRepName : customerName}`);
+      out = out.replace(/Name\/Nombre:\s*_{5,}/g, `Name/Nombre: ${dealerSignatureCell ? salesRepName : customerName}`);
+      out = out.replace(/Name:\s*_{5,}/g, `Name: ${salesRepName}`);
+      out = out.replace(/CUSTOMER \/ CLIENTE:\n_________________________\nSign\/Firma/g, `CUSTOMER / CLIENTE:\n_________________________\nSign/Firma\nName/Nombre: ${customerName}`);
+      out = out.replace(/CO-BUYER \/ CO-COMPRADOR:\n_________________________\nSign\/Firma/g, `CO-BUYER / CO-COMPRADOR:\n_________________________\nSign/Firma\nName/Nombre: ${val('co_buyer_name') || ''}`);
+      out = out.replace(/CUSTOMER SIGNATURE \/ FIRMA DEL CLIENTE\nPrinted Name \/ Nombre Impreso: ?/g, `CUSTOMER SIGNATURE / FIRMA DEL CLIENTE\nPrinted Name / Nombre Impreso: ${customerName}`);
+      out = out.replace(/Cardholder Signature\nFirma del Titular de la Tarjeta/g, `Cardholder Signature\nFirma del Titular de la Tarjeta\nName/Nombre: ${cardholderName}`);
+      out = out.replace(/Borrower Signature \(If different\)\nFirma del Deudor \(Si es distinto\)/g, `Borrower Signature (If different)\nFirma del Deudor (Si es distinto)\nName/Nombre: ${customerName}`);
+      if (out.trim() === 'BUYER SIGNATURE') out = `BUYER SIGNATURE\n${customerName}`;
+      if (out.trim() === 'CUSTOMER SIGNATURE') out = `CUSTOMER SIGNATURE\n${customerName}`;
       out = out.replace(/Execution Date \/ Fecha\s*\n\s*______ \/ ______ \/ 20_____/g, `Execution Date / Fecha\n${transactionDate}`);
       out = out.replace(/Date\/Fecha:\s*____\/____\/______/g, `Date/Fecha: ${transactionDate}`);
       out = out.replace(/Date\/Fecha(?!:)/g, `Date/Fecha: ${transactionDate}`);
@@ -570,7 +597,7 @@
       out = out.replace(new RegExp(`(Date / Fecha: ${transactionDate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?:${transactionDate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|20\\d{2})`, 'g'), `$1`);
       out = out.replace(new RegExp(`(Date(?: / Fecha|/Fecha)?(?: de la Transacción)?: ${transactionDate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})_+`, 'g'), '$1');
       if (out.trim() === 'Date') out = `Date: ${transactionDate}`;
-      out = out.replace(/EASYCAR LLC REP:/g, `EASYCAR LLC REP: ${val('sales_rep_name')}`);
+      out = out.replace(/EASYCAR LLC REP:/g, `EASYCAR LLC REP: ${salesRepName}`);
       out = out.replace(/\(10 PAYMENTS \/ PAGOS\)/g, `(${val('pickup_payment_count')} PAYMENTS / PAGOS)`);
       return out;
     }
