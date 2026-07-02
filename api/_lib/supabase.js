@@ -24,7 +24,7 @@ export async function authenticateRequest(req) {
   if (error || !data.user) return { error: 'Invalid or expired session' };
 
   const { data: profile, error: profileError } = await supabase
-    .from('profiles')
+    .from('doc_user_profiles')
     .select('id, full_name, role, active')
     .eq('id', data.user.id)
     .single();
@@ -34,7 +34,7 @@ export async function authenticateRequest(req) {
 }
 
 export async function findAuthorizedSale(supabase, profile, saleId) {
-  let query = supabase.from('sales').select('*').eq('id', saleId);
+  let query = supabase.from('doc_sales').select('*').eq('id', saleId);
   if (!['manager', 'admin'].includes(profile.role)) query = query.eq('created_by', profile.id);
   const { data, error } = await query.single();
   if (error || !data) return { error: 'Sale not found or access denied' };

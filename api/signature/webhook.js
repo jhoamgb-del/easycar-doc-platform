@@ -71,11 +71,11 @@ async function archiveSignedDocuments(supabase, saleId, requestId, providerSubmi
     const path = `${saleId}/digital/${requestId}/${name}`;
 
     const { error: uploadError } = await supabase.storage
-      .from('sale-documents')
+      .from('easycar-documents')
       .upload(path, bytes, { contentType: 'application/pdf', upsert: true });
     if (uploadError) throw uploadError;
 
-    const { error: documentError } = await supabase.from('sale_documents').insert({
+    const { error: documentError } = await supabase.from('doc_sale_documents').insert({
       sale_id: saleId,
       document_type: 'signed_digital',
       storage_path: path,
@@ -103,14 +103,14 @@ export default async function handler(req, res) {
     const externalId = findExternalId(data);
     const supabase = adminClient();
 
-    let requestQuery = supabase.from('signing_requests').select('*');
+    let requestQuery = supabase.from('doc_signing_requests').select('*');
     requestQuery = providerSubmissionId
       ? requestQuery.eq('provider_submission_id', providerSubmissionId)
       : requestQuery.eq('sale_id', externalId);
     const { data: requestRecord } = await requestQuery.maybeSingle();
     const saleId = requestRecord?.sale_id || externalId;
 
-    await supabase.from('signing_events').insert({
+    await supabase.from('doc_signing_events').insert({
       signing_request_id: requestRecord?.id || null,
       sale_id: saleId || null,
       event_type: type,
@@ -124,18 +124,18 @@ export default async function handler(req, res) {
       if (status === 'opened') changes.opened_at = new Date().toISOString();
       if (status === 'completed') changes.completed_at = new Date().toISOString();
       if (status === 'declined') changes.declined_at = new Date().toISOString();
-      await supabase.from('signing_requests').update(changes).eq('id', requestRecord.id);
+      await supabase.from('doc_signing_requests').update(changes).eq('id', requestRecord.id);
     }
 
     if (saleId && status === 'opened') {
-      await supabase.from('sales').update({ status: 'viewed' }).eq('id', saleId);
+      await supabase.from('doc_sales').update({ status: 'viewed' }).eq('id', saleId);
     }
     if (saleId && status === 'declined') {
-      await supabase.from('sales').update({ status: 'declined' }).eq('id', saleId);
+      await supabase.from('doc_sales').update({ status: 'declined' }).eq('id', saleId);
     }
     if (saleId && status === 'completed' && requestRecord) {
       await archiveSignedDocuments(supabase, saleId, requestRecord.id, requestRecord.provider_submission_id);
-      await supabase.from('sales').update({ status: 'signed_digital', signature_method: 'digital' }).eq('id', saleId);
+      await supabase.from('doc_sales').update({ status: 'signed_digital', signature_method: 'digital' }).eq('id', saleId);
     }
 
     return json(res, 200, { ok: true });

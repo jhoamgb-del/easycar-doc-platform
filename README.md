@@ -36,7 +36,7 @@ Sistema para preparar, guardar, imprimir y firmar documentos de ventas EasyCar.
 4. Crear el primer usuario y promoverlo a administrador:
 
 ```sql
-update public.profiles
+update public.doc_user_profiles
 set role = 'admin'
 where id = 'USER_UUID';
 ```

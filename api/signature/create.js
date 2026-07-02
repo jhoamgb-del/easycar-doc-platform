@@ -104,7 +104,7 @@ export default async function handler(req, res) {
     if (!submissionId) throw new Error('DocuSeal did not return a submission ID');
 
     const { data: requestRecord, error: requestError } = await auth.supabase
-      .from('signing_requests')
+      .from('doc_signing_requests')
       .insert({
         sale_id: sale.id,
         provider_submission_id: submissionId,
@@ -120,7 +120,7 @@ export default async function handler(req, res) {
     if (requestError) throw requestError;
 
     await auth.supabase
-      .from('sales')
+      .from('doc_sales')
       .update({ status: 'sent', signature_method: 'digital' })
       .eq('id', sale.id);
 

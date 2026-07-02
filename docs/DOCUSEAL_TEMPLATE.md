@@ -53,4 +53,4 @@ https://easycar-doc-platform.vercel.app/api/signature/webhook
 
 Activar la firma HMAC del webhook y guardar el secreto en `DOCUSEAL_WEBHOOK_SECRET`.
 
-El sistema relaciona DocuSeal con la venta mediante `external_id`, guarda los eventos y copia el PDF final al bucket privado `sale-documents`.
+El sistema relaciona DocuSeal con la venta mediante `external_id`, guarda los eventos y copia el PDF final al bucket privado `easycar-documents`.

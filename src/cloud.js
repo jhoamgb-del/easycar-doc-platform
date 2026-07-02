@@ -78,8 +78,8 @@ async function saveSale(formData) {
   if (!supabase || !session?.user) return null;
   const record = saleRecord(formData);
   const query = currentSaleId
-    ? supabase.from('sales').update(record).eq('id', currentSaleId)
-    : supabase.from('sales').insert(record);
+    ? supabase.from('doc_sales').update(record).eq('id', currentSaleId)
+    : supabase.from('doc_sales').insert(record);
   const { data, error } = await query.select('id, status').single();
   if (error) throw error;
   setCurrentSale(data.id, data.status);
@@ -88,7 +88,7 @@ async function saveSale(formData) {
 }
 
 async function loadSale(id) {
-  const { data, error } = await supabase.from('sales').select('*').eq('id', id).single();
+  const { data, error } = await supabase.from('doc_sales').select('*').eq('id', id).single();
   if (error) throw error;
   app.loadFormData(data.form_data);
   setCurrentSale(data.id, data.status);
@@ -108,7 +108,7 @@ function statusLabel(status) {
 async function loadRecentSales() {
   if (!supabase || !session?.user) return;
   const { data, error } = await supabase
-    .from('sales')
+    .from('doc_sales')
     .select('id, customer_name, vehicle_description, status, transaction_date')
     .order('created_at', { ascending: false })
     .limit(12);
