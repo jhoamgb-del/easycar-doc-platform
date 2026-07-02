@@ -9,9 +9,31 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.customers (
+  id uuid primary key default gen_random_uuid(),
+  created_by uuid not null references public.profiles(id),
+  full_name text not null default '',
+  email text,
+  phone text,
+  address text,
+  city text,
+  state text,
+  zip_code text,
+  driver_license text,
+  latest_sale_id uuid,
+  latest_vehicle text,
+  latest_vin text,
+  latest_contract_number text,
+  last_transaction_date date,
+  form_data jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.sales (
   id uuid primary key default gen_random_uuid(),
   created_by uuid not null references public.profiles(id),
+  customer_id uuid references public.customers(id),
   customer_name text not null default '',
   customer_email text,
   customer_phone text,
@@ -28,6 +50,9 @@ create table if not exists public.sales (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.sales
+add column if not exists customer_id uuid references public.customers(id);
 
 create table if not exists public.sale_documents (
   id uuid primary key default gen_random_uuid(),
@@ -78,7 +103,12 @@ create table if not exists public.signing_events (
   unique (provider, provider_event_id)
 );
 
+create index if not exists idx_customers_created_by on public.customers(created_by);
+create index if not exists idx_customers_updated_at on public.customers(updated_at desc);
+create index if not exists idx_customers_email on public.customers(lower(email));
+create index if not exists idx_customers_phone on public.customers(phone);
 create index if not exists idx_sales_created_by on public.sales(created_by);
+create index if not exists idx_sales_customer_id on public.sales(customer_id);
 create index if not exists idx_sales_status on public.sales(status);
 create index if not exists idx_sales_created_at on public.sales(created_at desc);
 create index if not exists idx_sales_vin on public.sales(vin);
@@ -99,6 +129,10 @@ $$;
 
 drop trigger if exists profiles_set_updated_at on public.profiles;
 create trigger profiles_set_updated_at before update on public.profiles
+for each row execute function public.set_updated_at();
+
+drop trigger if exists customers_set_updated_at on public.customers;
+create trigger customers_set_updated_at before update on public.customers
 for each row execute function public.set_updated_at();
 
 drop trigger if exists sales_set_updated_at on public.sales;
@@ -128,6 +162,92 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute function public.handle_new_user();
 
+create or replace function public.sync_customer_from_sale()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  source jsonb := coalesce(new.form_data, '{}'::jsonb);
+  normalized_email text := nullif(lower(btrim(coalesce(new.customer_email, source ->> 'customer_email', ''))), '');
+  normalized_phone text := nullif(regexp_replace(coalesce(new.customer_phone, source ->> 'phone', ''), '[^0-9]+', '', 'g'), '');
+  customer_name text := nullif(btrim(coalesce(new.customer_name, '')), '');
+  customer_address text := nullif(btrim(coalesce(source ->> 'address', '')), '');
+  customer_city text := nullif(btrim(coalesce(source ->> 'city', '')), '');
+  customer_state text := nullif(btrim(coalesce(source ->> 'state', '')), '');
+  customer_zip text := nullif(btrim(coalesce(source ->> 'zip_code', '')), '');
+  customer_license text := nullif(btrim(coalesce(source ->> 'driver_license', '')), '');
+  target_customer_id uuid;
+begin
+  if new.created_by is null then
+    return new;
+  end if;
+
+  if customer_name is null then
+    customer_name := btrim(concat_ws(' ', source ->> 'first_name', source ->> 'middle_name', source ->> 'last_name', source ->> 'second_last_name'));
+  end if;
+
+  if normalized_email is not null then
+    select id into target_customer_id
+    from public.customers
+    where created_by = new.created_by
+      and lower(email) = normalized_email
+    order by updated_at desc
+    limit 1;
+  end if;
+
+  if target_customer_id is null and normalized_phone is not null then
+    select id into target_customer_id
+    from public.customers
+    where created_by = new.created_by
+      and regexp_replace(coalesce(phone, ''), '[^0-9]+', '', 'g') = normalized_phone
+    order by updated_at desc
+    limit 1;
+  end if;
+
+  if target_customer_id is null then
+    insert into public.customers (
+      created_by, full_name, email, phone, address, city, state, zip_code,
+      driver_license, latest_sale_id, latest_vehicle, latest_vin,
+      latest_contract_number, last_transaction_date, form_data
+    )
+    values (
+      new.created_by, coalesce(customer_name, ''), normalized_email, normalized_phone,
+      customer_address, customer_city, customer_state, customer_zip,
+      customer_license, new.id, new.vehicle_description, new.vin,
+      new.contract_number, new.transaction_date, source
+    )
+    returning id into target_customer_id;
+  else
+    update public.customers
+    set
+      full_name = coalesce(customer_name, full_name),
+      email = coalesce(normalized_email, email),
+      phone = coalesce(normalized_phone, phone),
+      address = coalesce(customer_address, address),
+      city = coalesce(customer_city, city),
+      state = coalesce(customer_state, state),
+      zip_code = coalesce(customer_zip, zip_code),
+      driver_license = coalesce(customer_license, driver_license),
+      latest_sale_id = new.id,
+      latest_vehicle = coalesce(new.vehicle_description, latest_vehicle),
+      latest_vin = coalesce(new.vin, latest_vin),
+      latest_contract_number = coalesce(new.contract_number, latest_contract_number),
+      last_transaction_date = coalesce(new.transaction_date, last_transaction_date),
+      form_data = source
+    where id = target_customer_id;
+  end if;
+
+  new.customer_id := target_customer_id;
+  return new;
+end;
+$$;
+
+drop trigger if exists sales_sync_customer on public.sales;
+create trigger sales_sync_customer before insert or update on public.sales
+for each row execute function public.sync_customer_from_sale();
+
 create or replace function public.can_manage_all_sales()
 returns boolean
 language sql
@@ -156,6 +276,7 @@ as $$
 $$;
 
 alter table public.profiles enable row level security;
+alter table public.customers enable row level security;
 alter table public.sales enable row level security;
 alter table public.sale_documents enable row level security;
 alter table public.signing_requests enable row level security;
@@ -164,6 +285,19 @@ alter table public.signing_events enable row level security;
 drop policy if exists "profiles_read" on public.profiles;
 create policy "profiles_read" on public.profiles for select to authenticated
 using (id = auth.uid() or public.can_manage_all_sales());
+
+drop policy if exists "customers_read" on public.customers;
+create policy "customers_read" on public.customers for select to authenticated
+using (created_by = auth.uid() or public.can_manage_all_sales());
+
+drop policy if exists "customers_insert" on public.customers;
+create policy "customers_insert" on public.customers for insert to authenticated
+with check (created_by = auth.uid());
+
+drop policy if exists "customers_update" on public.customers;
+create policy "customers_update" on public.customers for update to authenticated
+using (created_by = auth.uid() or public.can_manage_all_sales())
+with check (created_by = auth.uid() or public.can_manage_all_sales());
 
 drop policy if exists "sales_read" on public.sales;
 create policy "sales_read" on public.sales for select to authenticated

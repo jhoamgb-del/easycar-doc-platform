@@ -24,7 +24,7 @@ Sistema para preparar, guardar, imprimir y firmar documentos de ventas EasyCar.
 
 - Vercel: sitio y servicios privados.
 - Supabase Auth: acceso de vendedores.
-- Supabase Postgres: ventas, estados y auditoria.
+- Supabase Postgres: clientes, ventas, estados y auditoria.
 - Supabase Storage: documentos firmados digitalmente y archivos privados.
 - DocuSeal: solicitud y registro de firma electronica.
 
@@ -46,16 +46,36 @@ where id = 'USER_UUID';
 7. Crear el webhook DocuSeal apuntando a:
 
 ```text
-https://easycar-doc.vercel.app/api/signature/webhook
+https://easycar-doc-platform.vercel.app/api/signature/webhook
 ```
 
 8. Volver a desplegar el proyecto en Vercel.
+
+## Variables de Vercel
+
+Estas variables deben existir en Production:
+
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+DOCUSEAL_API_URL
+DOCUSEAL_API_KEY
+DOCUSEAL_TEMPLATE_ID
+DOCUSEAL_CUSTOMER_ROLE
+DOCUSEAL_WEBHOOK_SECRET
+```
+
+`VITE_SUPABASE_URL` y `SUPABASE_URL` normalmente tienen el mismo valor.
+`DOCUSEAL_API_URL` puede quedar como `https://api.docuseal.com`.
 
 ## Seguridad
 
 - La llave `SUPABASE_SERVICE_ROLE_KEY` y la llave de DocuSeal son solo del servidor.
 - Los vendedores ven sus propias ventas.
 - Gerentes y administradores pueden ver todas las ventas.
+- Cada venta crea o actualiza automaticamente un registro de cliente para historial y busqueda.
 - Los documentos se guardan en un bucket privado.
 - Los enlaces de firma se crean para un cliente especifico y requieren verificacion por correo.
 - El guardado local del navegador se mantiene solo como respaldo temporal.

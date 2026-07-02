@@ -48,7 +48,7 @@ Los nombres de firmas pueden variar, pero deben pertenecer al rol `Customer`:
 Configurar los eventos de formularios para esta URL:
 
 ```text
-https://easycar-doc.vercel.app/api/signature/webhook
+https://easycar-doc-platform.vercel.app/api/signature/webhook
 ```
 
 Activar la firma HMAC del webhook y guardar el secreto en `DOCUSEAL_WEBHOOK_SECRET`.
