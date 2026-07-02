@@ -562,7 +562,7 @@
       const customerName = fullName();
       const salesRepName = val('sales_rep_name');
       const cardholderName = val('cardholder_name') || customerName;
-      const dealerSignatureCell = /EASYCAR LLC REP|DEALER REPRESENTATIVE|POR EASYCAR LLC/.test(out);
+      const dealerSignatureCell = /(EASYCAR LLC REP|EASYCAR LLC SIGNATURE|DEALER REPRESENTATIVE|POR EASYCAR LLC)/.test(out);
       out = markChoices(out);
       out = out.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (_, key) => tokenValue(key));
       if (out.trim().startsWith('Stock Number:')) {
@@ -587,6 +587,8 @@
       out = out.replace(/Borrower Signature \(If different\)\nFirma del Deudor \(Si es distinto\)/g, `Borrower Signature (If different)\nFirma del Deudor (Si es distinto)\nName/Nombre: ${customerName}`);
       if (out.trim() === 'BUYER SIGNATURE') out = `BUYER SIGNATURE\n${customerName}`;
       if (out.trim() === 'CUSTOMER SIGNATURE') out = `CUSTOMER SIGNATURE\n${customerName}`;
+      if (out.trim() === 'EASYCAR LLC SIGNATURE') out = `EASYCAR LLC SIGNATURE\n${salesRepName}`;
+      if (out.trim() === 'EASYCAR LLC REP') out = `EASYCAR LLC REP\n${salesRepName}`;
       out = out.replace(/Execution Date \/ Fecha\s*\n\s*______ \/ ______ \/ 20_____/g, `Execution Date / Fecha\n${transactionDate}`);
       out = out.replace(/Date\/Fecha:\s*____\/____\/______/g, `Date/Fecha: ${transactionDate}`);
       out = out.replace(/Date\/Fecha(?!:)/g, `Date/Fecha: ${transactionDate}`);
@@ -600,6 +602,29 @@
       out = out.replace(/EASYCAR LLC REP:/g, `EASYCAR LLC REP: ${salesRepName}`);
       out = out.replace(/\(10 PAYMENTS \/ PAGOS\)/g, `(${val('pickup_payment_count')} PAYMENTS / PAGOS)`);
       return out;
+    }
+    function enrichSignatureRows(rows) {
+      const output = rows.map(row => row.slice());
+      const header = output[0] || [];
+      const hasSignatureColumns = header.some(cell => /(CUSTOMER|CLIENTE|BUYER|COMPRADOR|CARDHOLDER|BORROWER|DEUDOR|EASYCAR|DEALER|REP)/i.test(cell || ''));
+      if (!hasSignatureColumns || output.length < 3) return output;
+
+      const customerName = fullName();
+      const salesRepName = val('sales_rep_name');
+      const coBuyerName = val('co_buyer_name') || '';
+      for (let index = 0; index < header.length; index++) {
+        const label = String(header[index] || '');
+        const current = String(output[1]?.[index] || '').trim();
+        if (current) continue;
+        if (/EASYCAR|DEALER|REP/i.test(label)) {
+          output[1][index] = `Name/Nombre: ${salesRepName}`;
+        } else if (/CO-BUYER|CO-COMPRADOR/i.test(label)) {
+          output[1][index] = `Name/Nombre: ${coBuyerName}`;
+        } else if (/CUSTOMER|CLIENTE|BUYER|COMPRADOR|CARDHOLDER|BORROWER|DEUDOR/i.test(label)) {
+          output[1][index] = `Name/Nombre: ${customerName}`;
+        }
+      }
+      return output;
     }
     function isHeading(text) {
       const t = text.trim();
@@ -626,7 +651,8 @@
     function renderTable(rows) {
       const isPaymentSchedule = rows[0]?.[0] === '#';
       const paymentCount = Number(val('pickup_payment_count')) || 10;
-      const visibleRows = isPaymentSchedule ? rows.filter((row, index) => index === 0 || Number(row[0]) <= paymentCount) : rows;
+      const displayRows = enrichSignatureRows(rows);
+      const visibleRows = isPaymentSchedule ? displayRows.filter((row, index) => index === 0 || Number(row[0]) <= paymentCount) : displayRows;
       return `<table class="${tableClass(visibleRows)}"><tbody>${visibleRows.map(row => `<tr>${row.map(cell => `<td>${esc(fillText(cell))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
     }
     function renderDocs() {
