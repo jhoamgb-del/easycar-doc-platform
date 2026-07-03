@@ -7,17 +7,23 @@ Sistema para preparar, guardar, imprimir y firmar documentos de ventas EasyCar.
 ### Firma digital
 
 1. El vendedor inicia sesion con un enlace enviado a su correo.
-2. Llena y guarda la venta en Supabase.
-3. Selecciona **Enviar para firma digital**.
-4. El servidor genera el paquete completo en HTML profesional, crea una solicitud privada en DocuSeal y envia el enlace al cliente.
-5. DocuSeal informa eventos de apertura, firma o rechazo mediante webhook.
-6. El PDF firmado se descarga y archiva en Supabase Storage.
+2. Elige el tipo de venta: **BHPH** o **BANCO**.
+3. Llena y guarda la venta en Supabase.
+4. Selecciona **Enviar para firma digital**.
+5. El servidor genera el paquete correcto en HTML profesional, crea una solicitud privada en DocuSeal y envia el enlace al cliente.
+6. DocuSeal informa eventos de apertura, firma o rechazo mediante webhook.
+7. El PDF firmado se descarga y archiva en Supabase Storage.
+
+### Tipos de venta
+
+- **BHPH**: genera todos los documentos EasyCar.
+- **BANCO**: genera solo `Pick-Up Payment` y `Credit Card Authorization`.
 
 ### Firma fisica
 
 1. El vendedor llena la venta.
 2. Selecciona **Imprimir para firma fisica**.
-3. El sistema imprime el paquete completo con los datos ya colocados.
+3. El sistema imprime el paquete correspondiente al tipo de venta con los datos ya colocados.
 4. El cliente firma manualmente los documentos impresos.
 
 ## Componentes
@@ -63,11 +69,13 @@ SUPABASE_SERVICE_ROLE_KEY
 DOCUSEAL_API_URL
 DOCUSEAL_API_KEY
 DOCUSEAL_CUSTOMER_ROLE
+DOCUSEAL_REPLY_TO
 DOCUSEAL_WEBHOOK_SECRET
 ```
 
 `VITE_SUPABASE_URL` y `SUPABASE_URL` normalmente tienen el mismo valor.
 `DOCUSEAL_API_URL` puede quedar como `https://api.docuseal.com`.
+`DOCUSEAL_REPLY_TO` puede quedar como `sales@easycarrus.com`.
 
 ## Seguridad
 

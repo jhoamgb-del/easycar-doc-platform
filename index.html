@@ -27,6 +27,15 @@
     .panel { padding: 22px; margin-bottom: 20px; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 18px; }
     .toolbar p { margin: 0; color: var(--muted); line-height: 1.4; }
+    .deal-mode { display: grid; gap: 10px; margin: 0 0 18px; padding: 14px; border: 1px solid #c7d4e5; border-radius: 8px; background: #f8fbff; }
+    .deal-mode strong { color: var(--dark); font-size: .92rem; }
+    .mode-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .mode-tab { display: grid; gap: 5px; min-height: 74px; padding: 11px 12px; border: 2px solid #c7d4e5; border-radius: 7px; background: #fff; color: var(--dark); cursor: pointer; }
+    .mode-tab input { position: absolute; opacity: 0; pointer-events: none; }
+    .mode-tab span { font-weight: 900; letter-spacing: .05em; }
+    .mode-tab small { color: var(--muted); font-size: .76rem; line-height: 1.25; text-transform: none; }
+    .mode-tab:has(input:checked) { border-color: var(--blue); background: #eaf3ff; box-shadow: inset 0 0 0 1px rgba(21,85,166,.18); }
+    .mode-summary { margin: 0; color: #34445e; font-size: .86rem; line-height: 1.35; }
     .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 16px; }
     .full { grid-column: 1 / -1; }
     label { display: grid; gap: 6px; color: #2f3b51; font-size: .82rem; font-weight: 700; text-transform: uppercase; }
@@ -100,6 +109,7 @@
       .schedule-grid { grid-template-columns: 38px 1fr; }
       .schedule-grid .head { display: none; }
       .actions button { width: 100%; }
+      .mode-tabs { grid-template-columns: 1fr; }
       .doc { padding: 20px; }
       .doc table { table-layout: auto; }
       .doc td { display: block; width: 100%; }
@@ -243,8 +253,25 @@
         </section>
       </section>
       <div class="toolbar">
-        <p>Version directa para ventas. Incluye los 10 documentos EasyCar, llenado automatico, VIN, guardado en nube e impresion.</p>
+        <p>Version directa para ventas. Elige el tipo de venta, llena una sola pantalla y el sistema prepara solo los documentos necesarios.</p>
         <button type="button" onclick="window.print()">Imprimir para firma fisica</button>
+      </div>
+      <div class="deal-mode" aria-label="Tipo de venta">
+        <strong>Tipo de venta</strong>
+        <div class="mode-tabs">
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_type_bhph" value="BHPH" checked>
+            <span>BHPH</span>
+            <small>Paquete completo EasyCar para venta Buy Here Pay Here.</small>
+          </label>
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_type_bank" value="BANCO">
+            <span>BANCO</span>
+            <small>Solo inicial diferida y autorizacion de tarjeta.</small>
+          </label>
+        </div>
+        <input type="hidden" id="sale_type" value="BHPH">
+        <p class="mode-summary" id="modeSummary">BHPH: se generan todos los documentos del paquete.</p>
       </div>
       <form id="saleForm" class="grid">
         <div class="section-title">Cliente</div>
@@ -356,6 +383,14 @@
       communication: 'Communication Authorization',
       creditapp: 'Credit Application'
     };
+    const DOC_SETS = {
+      BHPH: ORIGINAL_DOCS.map(doc => doc.key),
+      BANCO: ['pickup', 'card']
+    };
+    const MODE_COPY = {
+      BHPH: 'BHPH: se generan todos los documentos del paquete.',
+      BANCO: 'BANCO: se generan solo Pick-Up Payment y Credit Card Authorization.'
+    };
     const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO';
     const SUPABASE_CONFIG = {
       url: window.EASYCAR_SUPABASE_URL || '',
@@ -363,6 +398,7 @@
     };
     const pickupIds = Array.from({ length: 12 }, (_, i) => i + 1).flatMap(i => [`pickup_date_${i}`, `pickup_amount_${i}`, `pickup_receipt_${i}`]);
     const ids = [
+      'sale_type',
       'first_name','middle_name','last_name','second_last_name','co_buyer_name','address','city','state','zip_code','customer_email','phone','alternate_phone','driver_license',
       'vin','vehicle_year','vehicle_make','vehicle_model','vehicle_mileage','stock_number','contract_number','transaction_date','sales_rep_name','gps_status','vehicle_history_decision',
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
@@ -372,6 +408,21 @@
     ];
     const $ = id => document.getElementById(id);
     const val = id => ($(id)?.value || '').trim();
+    const currentSaleType = () => (val('sale_type') === 'BANCO' ? 'BANCO' : 'BHPH');
+    function visibleDocs() {
+      const order = DOC_SETS[currentSaleType()] || DOC_SETS.BHPH;
+      return order.map(key => ORIGINAL_DOCS.find(doc => doc.key === key)).filter(Boolean);
+    }
+    function setSaleType(type) {
+      const normalized = type === 'BANCO' ? 'BANCO' : 'BHPH';
+      $('sale_type').value = normalized;
+      const bank = $('sale_type_bank');
+      const bhph = $('sale_type_bhph');
+      if (bank) bank.checked = normalized === 'BANCO';
+      if (bhph) bhph.checked = normalized === 'BHPH';
+      if ($('modeSummary')) $('modeSummary').textContent = MODE_COPY[normalized];
+      renderDocs();
+    }
     const isSupabaseConfigured = () => /^https:\/\/.+\.supabase\.co$/.test(SUPABASE_CONFIG.url || '') && SUPABASE_CONFIG.anonKey && !SUPABASE_CONFIG.anonKey.includes('VITE_SUPABASE');
     const esc = text => String(text || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
     const fullName = () => [val('first_name'), val('middle_name'), val('last_name'), val('second_last_name')].filter(Boolean).join(' ');
@@ -658,8 +709,10 @@
     function renderDocs() {
       calculateConditionalDeadline();
       calculatePickupSchedule();
-      document.getElementById('docNav').innerHTML = ORIGINAL_DOCS.map((doc, i) => `<a href="#doc-${doc.key}">${i + 1}. ${DOC_TITLES[doc.key]}</a>`).join('');
-      document.getElementById('docs').innerHTML = ORIGINAL_DOCS.map((doc, i) => {
+      const docsToRender = visibleDocs();
+      if ($('modeSummary')) $('modeSummary').textContent = MODE_COPY[currentSaleType()];
+      document.getElementById('docNav').innerHTML = docsToRender.map((doc, i) => `<a href="#doc-${doc.key}">${i + 1}. ${DOC_TITLES[doc.key]}</a>`).join('');
+      document.getElementById('docs').innerHTML = docsToRender.map((doc, i) => {
         let firstParagraph = true;
         const parts = [];
         for (let blockIndex = 0; blockIndex < doc.blocks.length; blockIndex++) {
@@ -680,7 +733,7 @@
         const body = parts.join('');
         const logoSrc = document.querySelector('.brand img')?.src || '';
         const letterhead = `<header class="doc-letterhead"><img src="${logoSrc}" alt="EasyCar"><div>EASYCAR LLC<br>7581 NW 50th St, Miami, FL 33166<br>(786) 818-0018 | info@easycarfl.com</div></header>`;
-        return `<article class="doc" id="doc-${doc.key}"><div class="doc-label">Documento ${i + 1} de ${ORIGINAL_DOCS.length}</div><div class="source-name">Original: ${esc(doc.name)}</div>${letterhead}<p class="integration-note">${esc(INTEGRATION_NOTICE)}</p>${body}</article>`;
+        return `<article class="doc" id="doc-${doc.key}"><div class="doc-label">Documento ${i + 1} de ${docsToRender.length} | ${currentSaleType()}</div><div class="source-name">Original: ${esc(doc.name)}</div>${letterhead}<p class="integration-note">${esc(INTEGRATION_NOTICE)}</p>${body}</article>`;
       }).join('');
     }
     let lastDecodedVin = '';
@@ -814,6 +867,8 @@
     $('refreshDocs').addEventListener('click', renderDocs);
     $('decodeVin').addEventListener('click', decodeVin);
     $('saveSale').addEventListener('click', saveSale);
+    $('sale_type_bhph').addEventListener('change', () => setSaleType('BHPH'));
+    $('sale_type_bank').addEventListener('change', () => setSaleType('BANCO'));
     $('salesList').addEventListener('click', event => {
       const button = event.target.closest('[data-load-sale]');
       if (button) loadLocalSale(button.dataset.loadSale);
@@ -829,11 +884,13 @@
         Object.entries(formData || {}).forEach(([fieldId, value]) => {
           if ($(fieldId)) $(fieldId).value = value || '';
         });
+        setSaleType(formData?.sale_type);
         ensureDefaultDates();
         renderDocs();
       },
       clearForm() {
         ids.forEach(id => { if ($(id)) $(id).value = ''; });
+        setSaleType('BHPH');
         $('pickup_payment_count').value = '10';
         $('pickup_frequency').value = 'Weekly';
         ensureDefaultDates();

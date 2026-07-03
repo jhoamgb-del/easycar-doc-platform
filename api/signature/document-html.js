@@ -31,6 +31,10 @@ const DOC_TITLES = {
   communication: 'Communication Authorization',
   creditapp: 'Credit Application'
 };
+const DOC_SETS = {
+  BHPH: ORIGINAL_DOCS.map(doc => doc.key),
+  BANCO: ['pickup', 'card']
+};
 
 const pickupDocument = ORIGINAL_DOCS.find(doc => doc.key === 'pickup');
 const pickupSchedule = pickupDocument?.blocks.find(block => block.type === 'table' && block.rows?.[0]?.[0] === '#');
@@ -46,6 +50,15 @@ function esc(text) {
 
 function raw(form, id) {
   return String(form?.[id] || '').trim();
+}
+
+function saleType(form) {
+  return raw(form, 'sale_type') === 'BANCO' ? 'BANCO' : 'BHPH';
+}
+
+function selectedDocs(form) {
+  const order = DOC_SETS[saleType(form)] || DOC_SETS.BHPH;
+  return order.map(key => ORIGINAL_DOCS.find(doc => doc.key === key)).filter(Boolean);
 }
 
 function fullName(form) {
@@ -263,7 +276,7 @@ function signatureLabel(label) {
   return String(label || '').split('\n')[0].replace(/_{3,}/g, '').trim();
 }
 
-function renderSignatureTable(form, rows, docIndex) {
+function renderSignatureTable(form, rows, doc) {
   const date = transactionDate(form);
   const customerName = fullName(form);
   const coBuyerName = raw(form, 'co_buyer_name');
@@ -276,17 +289,17 @@ function renderSignatureTable(form, rows, docIndex) {
     const isCustomer = /CUSTOMER|CLIENTE|BUYER|COMPRADOR|CARDHOLDER|BORROWER|DEUDOR/i.test(originalLabel);
     const label = esc(signatureLabel(originalLabel));
     const name = isDealer ? sellerName : isCoBuyer ? coBuyerName : customerName;
-    const field = isCustomer || isCoBuyer ? `<div class="sign-field">${signatureField(`${DOC_TITLES[ORIGINAL_DOCS[docIndex]?.key] || 'Document'} ${index + 1} Signature`, !isCoBuyer || Boolean(coBuyerName))}</div>` : '<div class="manual-line">X ______________________________</div>';
+    const field = isCustomer || isCoBuyer ? `<div class="sign-field">${signatureField(`${DOC_TITLES[doc?.key] || 'Document'} ${index + 1} Signature`, !isCoBuyer || Boolean(coBuyerName))}</div>` : '<div class="manual-line">X ______________________________</div>';
     return `<td><strong>${label}</strong><div class="printed-name">Name/Nombre: ${esc(name)}</div>${field}<div class="printed-date">Date/Fecha: ${esc(date)}</div></td>`;
   }).join('');
   return `<table class="signature-table"><tbody><tr>${cells}</tr></tbody></table>`;
 }
 
-function renderTable(form, rows, docIndex, forceSignature = false) {
+function renderTable(form, rows, doc, forceSignature = false) {
   const joined = rows.flat().join(' ');
   const compactEnough = joined.length < 1000 && rows.length <= 4;
   const signatureLike = forceSignature || (compactEnough && /(CUSTOMER|CLIENTE|BUYER|COMPRADOR|CARDHOLDER|BORROWER|DEUDOR|EASYCAR|DEALER|REP)/i.test(joined) && /(SIGNATURE|FIRMA|X _)/i.test(joined));
-  if (signatureLike) return renderSignatureTable(form, rows, docIndex);
+  if (signatureLike) return renderSignatureTable(form, rows, doc);
 
   const isPaymentSchedule = rows[0]?.[0] === '#';
   const paymentCount = Number(raw(form, 'pickup_payment_count')) || 10;
@@ -294,28 +307,30 @@ function renderTable(form, rows, docIndex, forceSignature = false) {
   return `<table class="${tableClass(visibleRows)}"><tbody>${visibleRows.map(row => `<tr>${row.map(cell => `<td>${esc(fillText(form, cell))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
-function renderDoc(form, doc, index) {
+function renderDoc(form, doc, index, total) {
   let firstParagraph = true;
   const parts = [];
   for (let blockIndex = 0; blockIndex < doc.blocks.length; blockIndex++) {
     const block = doc.blocks[blockIndex];
     if (block.type === 'table') {
-      parts.push(renderTable(form, block.rows, index));
+      parts.push(renderTable(form, block.rows, doc));
       continue;
     }
     if (block.text.trim() === 'SIGNATURES / FIRMAS' && doc.blocks[blockIndex + 1]?.type === 'table') {
-      parts.push(`<section class="signature-block">${renderParagraph(form, block.text, false)}${renderTable(form, doc.blocks[blockIndex + 1].rows, index, true)}</section>`);
+      parts.push(`<section class="signature-block">${renderParagraph(form, block.text, false)}${renderTable(form, doc.blocks[blockIndex + 1].rows, doc, true)}</section>`);
       blockIndex++;
       continue;
     }
     parts.push(renderParagraph(form, block.text, firstParagraph));
     firstParagraph = false;
   }
-  return `<article class="doc doc-${esc(doc.key)} page-break"><p class="doc-label">Documento ${index + 1} de ${ORIGINAL_DOCS.length} | ${esc(DOC_TITLES[doc.key] || doc.name)}</p><p class="integration-note">${esc(INTEGRATION_NOTICE)}</p>${parts.join('')}</article>`;
+  return `<article class="doc doc-${esc(doc.key)} page-break"><p class="doc-label">Documento ${index + 1} de ${total} | ${esc(DOC_TITLES[doc.key] || doc.name)} | ${saleType(form)}</p><p class="integration-note">${esc(INTEGRATION_NOTICE)}</p>${parts.join('')}</article>`;
 }
 
 export function renderDocusealHtml(form) {
-  const docs = ORIGINAL_DOCS.map((doc, index) => renderDoc(form || {}, doc, index)).join('');
+  const safeForm = form || {};
+  const docsToRender = selectedDocs(safeForm);
+  const docs = docsToRender.map((doc, index) => renderDoc(safeForm, doc, index, docsToRender.length)).join('');
   return `<!doctype html>
 <html>
 <head>

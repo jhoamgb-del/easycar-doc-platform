@@ -7,7 +7,8 @@ function docusealConfig() {
   return {
     apiKey,
     apiUrl: (process.env.DOCUSEAL_API_URL || 'https://api.docuseal.com').replace(/\/$/, ''),
-    customerRole: process.env.DOCUSEAL_CUSTOMER_ROLE || 'Customer'
+    customerRole: process.env.DOCUSEAL_CUSTOMER_ROLE || 'Customer',
+    replyTo: process.env.DOCUSEAL_REPLY_TO || 'sales@easycarrus.com'
   };
 }
 
@@ -32,6 +33,7 @@ export default async function handler(req, res) {
 
     const config = docusealConfig();
     const html = renderDocusealHtml(form);
+    const saleType = form.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
     const response = await fetch(`${config.apiUrl}/submissions/html`, {
       method: 'POST',
       headers: {
@@ -39,12 +41,13 @@ export default async function handler(req, res) {
         'X-Auth-Token': config.apiKey
       },
       body: JSON.stringify({
-        name: `EasyCar Document Package - ${name || sale.id}`,
+        name: `EasyCar ${saleType} Document Package - ${name || sale.id}`,
         send_email: true,
         order: 'preserved',
         merge_documents: true,
+        reply_to: config.replyTo,
         documents: [{
-          name: 'EasyCar Document Package',
+          name: `EasyCar ${saleType} Document Package`,
           html,
           html_header: renderDocusealHeader(),
           html_footer: renderDocusealFooter(),
@@ -55,11 +58,12 @@ export default async function handler(req, res) {
           email,
           name,
           external_id: sale.id,
+          reply_to: config.replyTo,
           require_email_2fa: true,
         }],
         message: {
-          subject: 'EasyCar - Documents ready for your signature',
-          body: 'Your EasyCar documents are ready. Review every page and sign securely here: {{submitter.link}}'
+          subject: `EasyCar - ${saleType} documents ready for your signature`,
+          body: 'Your EasyCar documents are ready. Review every page and sign securely here: {{submitter.link}}\n\nIf you have questions, reply to this email or contact sales@easycarrus.com.'
         }
       })
     });
