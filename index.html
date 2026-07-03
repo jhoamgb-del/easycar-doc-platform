@@ -65,6 +65,7 @@
     .cloud-user.visible { display: flex; }
     .workflow-actions { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid #d5e1f1; }
     .workflow-actions button:disabled { opacity: .48; cursor: not-allowed; }
+    .workflow-label { width: 100%; color: var(--dark); font-size: .82rem; font-weight: 900; text-transform: uppercase; }
     .sale-badge { display: inline-flex; align-items: center; min-height: 30px; padding: 0 9px; border-radius: 4px; background: #e7eef8; color: var(--dark); font-size: .78rem; font-weight: 800; }
     .cloud-recent { grid-column: 1 / -1; border-top: 1px solid #d5e1f1; padding-top: 12px; }
     .cloud-recent h3 { margin: 0 0 8px; font-size: .9rem; color: var(--dark); }
@@ -229,22 +230,22 @@
     <section class="panel">
       <section class="cloud-panel" aria-labelledby="cloudTitle">
         <div>
-          <h2 id="cloudTitle">Expediente central EasyCar</h2>
-          <p id="cloudStatus">Preparado para Supabase. Inicia sesion para guardar y firmar ventas de forma segura.</p>
+          <h2 id="cloudTitle">Acceso del vendedor y expediente central</h2>
+          <p id="cloudStatus">El vendedor entra con su correo para guardar ventas en Supabase y enviar firma digital al cliente.</p>
         </div>
         <div class="cloud-auth" id="cloudAuth">
-          <label>Correo del vendedor <input id="sellerEmail" type="email" autocomplete="email"></label>
-          <button type="button" id="sendLoginLink">Enviar acceso</button>
+          <label>Correo del vendedor para entrar <input id="sellerEmail" type="email" autocomplete="email" placeholder="sales@easycarus.com"></label>
+          <button type="button" id="sendLoginLink">Enviar enlace de entrada</button>
         </div>
         <div class="cloud-user" id="cloudUser">
           <strong id="cloudUserEmail"></strong>
           <button type="button" class="secondary" id="signOutSeller">Salir</button>
         </div>
         <div class="workflow-actions">
-          <span class="sale-badge" id="cloudSaleBadge">Sin expediente central</span>
-          <button type="button" class="secondary" id="newCloudSale" disabled>Nueva venta</button>
-          <button type="button" class="secondary" onclick="window.print()">Imprimir para firma fisica</button>
-          <button type="button" id="sendForSignature" disabled>Enviar para firma digital</button>
+          <div class="workflow-label">Acciones de la venta</div>
+          <span class="sale-badge" id="cloudSaleBadge">Venta nueva sin guardar</span>
+          <button type="button" class="secondary" id="newCloudSale" disabled>Limpiar / nueva venta</button>
+          <button type="button" id="sendForSignature" disabled>Enviar firma digital al cliente</button>
         </div>
         <div class="signature-result" id="signatureResult"></div>
         <section class="cloud-recent" id="cloudRecent" hidden>
@@ -254,7 +255,7 @@
       </section>
       <div class="toolbar">
         <p>Version directa para ventas. Elige el tipo de venta, llena una sola pantalla y el sistema prepara solo los documentos necesarios.</p>
-        <button type="button" onclick="window.print()">Imprimir para firma fisica</button>
+        <button type="button" onclick="window.print()">Imprimir / guardar PDF</button>
       </div>
       <div class="deal-mode" aria-label="Tipo de venta">
         <strong>Tipo de venta</strong>
@@ -283,7 +284,7 @@
         <label>Ciudad <input id="city"></label>
         <label>Estado <input id="state"></label>
         <label>Codigo postal <input id="zip_code"></label>
-        <label>Email <input id="customer_email"></label>
+        <label>Email del cliente para firma digital <input id="customer_email" type="email"></label>
         <label>Telefono <input id="phone"></label>
         <label>Telefono alterno <input id="alternate_phone"></label>
         <label>Licencia / ID <input id="driver_license"></label>
@@ -345,10 +346,9 @@
         <div class="actions full">
           <button type="button" id="refreshDocs">Actualizar documentos</button>
           <button type="button" id="saveSale">Guardar venta</button>
-          <button type="button" class="secondary" onclick="window.print()">Imprimir / Guardar PDF</button>
-          <div id="saveStatus" class="status">Guardado local activo en este navegador. Para historial central de clientes falta conectar Supabase.</div>
+          <div id="saveStatus" class="status">El guardado local queda como respaldo. Al entrar como vendedor, tambien se guarda en Supabase.</div>
         </div>
-        <div class="storage-note">Por ahora las ventas se conservan en este dispositivo y navegador. Para buscar clientes desde cualquier computadora y compartir el historial entre vendedores, se debe conectar la base central de Supabase.</div>
+        <div class="storage-note">Supabase es el expediente central: guarda clientes, ventas y estado de firma. El guardado local del navegador queda solo como respaldo temporal.</div>
         <section class="sales-history">
           <h3>Ventas guardadas recientemente</h3>
           <div id="salesList" class="sales-list"></div>

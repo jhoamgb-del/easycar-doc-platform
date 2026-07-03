@@ -35,7 +35,7 @@ function setCloudStatus(message, tone = '') {
 
 function setCurrentSale(id, status = 'draft') {
   currentSaleId = id || null;
-  controls.badge.textContent = id ? `Expediente ${id.slice(0, 8)} - ${status}` : 'Sin expediente central';
+  controls.badge.textContent = id ? `Guardada en Supabase: ${id.slice(0, 8)} - ${statusLabel(status)}` : 'Venta nueva sin guardar';
 }
 
 function setSessionUi(nextSession) {
@@ -46,11 +46,14 @@ function setSessionUi(nextSession) {
   controls.userEmail.textContent = loggedIn ? session.user.email : '';
   controls.newSale.disabled = !loggedIn;
   controls.sendSignature.disabled = !loggedIn;
+  controls.sendSignature.title = loggedIn
+    ? 'Enviar los documentos visibles al email del cliente'
+    : 'Primero entra como vendedor para guardar en Supabase y enviar por DocuSeal';
   controls.recent.hidden = !loggedIn;
   setCloudStatus(
     loggedIn
-      ? 'Expediente central conectado. Las ventas y documentos quedan protegidos por usuario.'
-      : 'Inicia sesion para guardar ventas y documentos en la nube.',
+      ? 'Conectado a Supabase. Ahora puedes guardar la venta y enviar firma digital al cliente.'
+      : 'Entra con el correo del vendedor. Ese acceso permite guardar ventas y enviar documentos por DocuSeal.',
     loggedIn ? 'good' : ''
   );
   if (loggedIn) loadRecentSales();
@@ -152,7 +155,8 @@ async function sendForSignature() {
   const sale = await saveSale(formData);
   if (!sale) throw new Error('La venta debe guardarse en el expediente central');
 
-  const approved = window.confirm(`Se enviaran los documentos de esta venta a ${formData.customer_email} para firma digital. ¿Continuar?`);
+  const saleType = formData.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
+  const approved = window.confirm(`Se enviaran los documentos ${saleType} de esta venta a ${formData.customer_email} para firma digital. ¿Continuar?`);
   if (!approved) return;
 
   setCloudStatus('Creando enlace seguro y enviando la solicitud...', '');
@@ -170,7 +174,7 @@ async function sendForSignature() {
     if (!response.ok) throw new Error(result.error || 'No se pudo enviar para firma');
     setCurrentSale(sale.id, 'sent');
     controls.signatureResult.replaceChildren();
-    const text = document.createTextNode(`Solicitud enviada a ${result.sentTo}. `);
+    const text = document.createTextNode(`Firma digital enviada al cliente: ${result.sentTo}. `);
     controls.signatureResult.append(text);
     if (result.signingUrl) {
       const link = document.createElement('a');
@@ -181,7 +185,7 @@ async function sendForSignature() {
       controls.signatureResult.append(link);
     }
     controls.signatureResult.classList.add('visible');
-    setCloudStatus('La solicitud de firma digital fue enviada correctamente.', 'good');
+    setCloudStatus('La solicitud de firma digital fue enviada correctamente al cliente.', 'good');
     await loadRecentSales();
   } finally {
     controls.sendSignature.disabled = false;
@@ -190,7 +194,7 @@ async function sendForSignature() {
 
 async function sendLoginLink() {
   const email = controls.sellerEmail.value.trim();
-  if (!email) return setCloudStatus('Escribe el correo del vendedor.', 'error');
+  if (!email) return setCloudStatus('Escribe el correo del vendedor para entrar al sistema.', 'error');
   controls.sendLogin.disabled = true;
   try {
     const { error } = await supabase.auth.signInWithOtp({
@@ -198,7 +202,7 @@ async function sendLoginLink() {
       options: { emailRedirectTo: window.location.origin }
     });
     if (error) throw error;
-    setCloudStatus(`Enviamos un enlace de acceso a ${email}.`, 'good');
+    setCloudStatus(`Enviamos un enlace de entrada al vendedor: ${email}. Abre ese correo para activar guardado y firma digital.`, 'good');
   } catch (error) {
     setCloudStatus(error.message, 'error');
   } finally {
@@ -210,14 +214,14 @@ function newSale() {
   setCurrentSale(null);
   app.clearForm();
   controls.signatureResult.classList.remove('visible');
-  setCloudStatus('Nueva venta preparada. Completa los datos y guarda el expediente.', 'good');
+  setCloudStatus('Formulario limpio para una nueva venta. Completa los datos y guarda en Supabase.', 'good');
 }
 
 window.EasyCarCloud = { saveSale };
 
 if (!configured) {
   controls.auth.style.display = 'none';
-  setCloudStatus('La estructura central esta preparada, pero faltan las credenciales de Supabase en Vercel.');
+  setCloudStatus('Supabase no esta configurado en Vercel. Puedes llenar e imprimir, pero no guardar ni enviar firma digital.');
 } else {
   controls.sendLogin.addEventListener('click', sendLoginLink);
   controls.signOut.addEventListener('click', async () => {

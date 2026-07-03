@@ -8,7 +8,7 @@ function docusealConfig() {
     apiKey,
     apiUrl: (process.env.DOCUSEAL_API_URL || 'https://api.docuseal.com').replace(/\/$/, ''),
     customerRole: process.env.DOCUSEAL_CUSTOMER_ROLE || 'Customer',
-    replyTo: process.env.DOCUSEAL_REPLY_TO || 'sales@easycarrus.com'
+    replyTo: process.env.DOCUSEAL_REPLY_TO || 'sales@easycarus.com'
   };
 }
 
@@ -63,7 +63,7 @@ export default async function handler(req, res) {
         }],
         message: {
           subject: `EasyCar - ${saleType} documents ready for your signature`,
-          body: 'Your EasyCar documents are ready. Review every page and sign securely here: {{submitter.link}}\n\nIf you have questions, reply to this email or contact sales@easycarrus.com.'
+          body: 'Your EasyCar documents are ready. Review every page and sign securely here: {{submitter.link}}\n\nIf you have questions, reply to this email or contact sales@easycarus.com.'
         }
       })
     });

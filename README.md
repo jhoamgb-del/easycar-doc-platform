@@ -9,7 +9,7 @@ Sistema para preparar, guardar, imprimir y firmar documentos de ventas EasyCar.
 1. El vendedor inicia sesion con un enlace enviado a su correo.
 2. Elige el tipo de venta: **BHPH** o **BANCO**.
 3. Llena y guarda la venta en Supabase.
-4. Selecciona **Enviar para firma digital**.
+4. Selecciona **Enviar firma digital al cliente**.
 5. El servidor genera el paquete correcto en HTML profesional, crea una solicitud privada en DocuSeal y envia el enlace al cliente.
 6. DocuSeal informa eventos de apertura, firma o rechazo mediante webhook.
 7. El PDF firmado se descarga y archiva en Supabase Storage.
@@ -22,7 +22,7 @@ Sistema para preparar, guardar, imprimir y firmar documentos de ventas EasyCar.
 ### Firma fisica
 
 1. El vendedor llena la venta.
-2. Selecciona **Imprimir para firma fisica**.
+2. Selecciona **Imprimir / guardar PDF**.
 3. El sistema imprime el paquete correspondiente al tipo de venta con los datos ya colocados.
 4. El cliente firma manualmente los documentos impresos.
 
@@ -75,7 +75,7 @@ DOCUSEAL_WEBHOOK_SECRET
 
 `VITE_SUPABASE_URL` y `SUPABASE_URL` normalmente tienen el mismo valor.
 `DOCUSEAL_API_URL` puede quedar como `https://api.docuseal.com`.
-`DOCUSEAL_REPLY_TO` puede quedar como `sales@easycarrus.com`.
+`DOCUSEAL_REPLY_TO` puede quedar como `sales@easycarus.com`.
 
 ## Seguridad
 
