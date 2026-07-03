@@ -9,7 +9,7 @@ Sistema para preparar, guardar, imprimir y firmar documentos de ventas EasyCar.
 1. El vendedor inicia sesion con un enlace enviado a su correo.
 2. Llena y guarda la venta en Supabase.
 3. Selecciona **Enviar para firma digital**.
-4. El servidor crea una solicitud privada en DocuSeal y envia el enlace al cliente.
+4. El servidor genera el paquete completo en HTML profesional, crea una solicitud privada en DocuSeal y envia el enlace al cliente.
 5. DocuSeal informa eventos de apertura, firma o rechazo mediante webhook.
 6. El PDF firmado se descarga y archiva en Supabase Storage.
 
@@ -41,7 +41,7 @@ set role = 'admin'
 where id = 'USER_UUID';
 ```
 
-5. Preparar la plantilla DocuSeal siguiendo `docs/DOCUSEAL_TEMPLATE.md`.
+5. Revisar la configuracion DocuSeal siguiendo `docs/DOCUSEAL_TEMPLATE.md`.
 6. Agregar en Vercel todas las variables descritas en `.env.example`.
 7. Crear el webhook DocuSeal apuntando a:
 
@@ -62,7 +62,6 @@ SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
 DOCUSEAL_API_URL
 DOCUSEAL_API_KEY
-DOCUSEAL_TEMPLATE_ID
 DOCUSEAL_CUSTOMER_ROLE
 DOCUSEAL_WEBHOOK_SECRET
 ```

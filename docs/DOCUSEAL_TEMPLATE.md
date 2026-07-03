@@ -1,47 +1,21 @@
-# Plantilla DocuSeal de EasyCar
+# Firma DocuSeal de EasyCar
 
-## Preparacion
+## Modelo actual
 
-1. Exportar el paquete final de documentos EasyCar a PDF.
-2. Crear una plantilla en DocuSeal con el rol `Customer`.
-3. Colocar los campos de firma, iniciales y fecha en cada documento que lo requiera.
-4. Nombrar los campos de datos exactamente como aparecen abajo.
-5. Marcar los datos comerciales prellenados como read-only.
-6. Copiar el ID de la plantilla a `DOCUSEAL_TEMPLATE_ID`.
+El sistema no depende de una plantilla manual ni de `DOCUSEAL_TEMPLATE_ID`.
 
-## Campos prellenados
+Cada venta genera un paquete HTML completo desde los documentos EasyCar ya adaptados en la aplicacion. El servidor envia ese HTML a DocuSeal con el endpoint `/submissions/html`, usando el rol `Customer`.
 
-- `Customer Name`
-- `Customer Email`
-- `Customer Phone`
-- `Customer Address`
-- `City`
-- `State`
-- `ZIP Code`
-- `Driver License`
-- `Co-Buyer Name`
-- `Vehicle`
-- `VIN`
-- `Mileage`
-- `Stock Number`
-- `Contract Number`
-- `Transaction Date`
-- `Sales Representative`
-- `Down Payment Total`
-- `Financed Down Payment`
-- `Payment Count`
-- `Payment Frequency`
-- `Payment 1 Date` hasta `Payment 12 Date`
-- `Payment 1 Amount` hasta `Payment 12 Amount`
+Los datos del cliente, vehiculo, VIN, millas, pagos, vendedor y fechas se imprimen directamente en el documento antes de enviarlo. DocuSeal solo pide al cliente completar los campos de firma definidos con `signature-field`.
 
-## Campos del cliente
+## Campos de firma
 
-Los nombres de firmas pueden variar, pero deben pertenecer al rol `Customer`:
+Los campos de firma pertenecen al rol `Customer`:
 
 - Firma del cliente en cada documento requerido.
-- Iniciales donde corresponda.
-- Fecha de firma.
-- Confirmaciones o casillas obligatorias.
+- Firma de co-buyer marcada como opcional cuando aplique.
+- La fecha no la llena el cliente; se imprime automaticamente con la fecha del contrato.
+- Donde firma EasyCar se imprime el nombre del vendedor.
 
 ## Webhook
 
