@@ -52,8 +52,8 @@ function setSessionUi(nextSession) {
   controls.recent.hidden = !loggedIn;
   setCloudStatus(
     loggedIn
-      ? 'Conectado a Supabase. Ahora puedes guardar la venta y enviar firma digital al cliente.'
-      : 'Entra con el correo del vendedor. Ese acceso permite guardar ventas y enviar documentos por DocuSeal.',
+      ? 'Conectado a Supabase. Completa el email del cliente y usa Enviar firma digital al cliente.'
+      : 'Para firma digital: entra con el correo del vendedor. Sin ese acceso el boton de DocuSeal queda bloqueado.',
     loggedIn ? 'good' : ''
   );
   if (loggedIn) loadRecentSales();
@@ -151,7 +151,7 @@ async function loadRecentSales() {
 async function sendForSignature() {
   if (!session?.access_token) throw new Error('Inicia sesion antes de enviar');
   const formData = app.collectFormData();
-  if (!formData.customer_email) throw new Error('Agrega el correo del cliente antes de enviar');
+  if (!formData.customer_email) throw new Error('Agrega el email del cliente para enviar la firma digital');
   const sale = await saveSale(formData);
   if (!sale) throw new Error('La venta debe guardarse en el expediente central');
 

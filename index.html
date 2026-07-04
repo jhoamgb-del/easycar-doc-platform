@@ -38,6 +38,11 @@
     .mode-summary { margin: 0; color: #34445e; font-size: .86rem; line-height: 1.35; }
     .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 16px; }
     .full { grid-column: 1 / -1; }
+    .name-grid { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 16px; }
+    .address-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+    .address-suggestions { display: none; grid-column: 1 / -1; gap: 6px; margin-top: 8px; }
+    .address-suggestions.visible { display: grid; }
+    .address-suggestion { min-height: 36px; padding: 8px 10px; border-radius: 5px; background: #fff; color: var(--dark); border: 1px solid var(--line); text-align: left; font-weight: 700; }
     label { display: grid; gap: 6px; color: #2f3b51; font-size: .82rem; font-weight: 700; text-transform: uppercase; }
     input, select, textarea { width: 100%; min-height: 42px; border: 1px solid #bac5d6; border-radius: 6px; padding: 10px 11px; font: inherit; background: #fffdf3; color: var(--ink); }
     input[readonly] { background: #eef4fb; color: #34445e; }
@@ -106,6 +111,8 @@
     @media (max-width: 760px) {
       .brand { align-items: flex-start; flex-direction: column; }
       .grid { grid-template-columns: 1fr; }
+      .name-grid { grid-template-columns: 1fr; }
+      .address-tools { grid-template-columns: 1fr; }
       .toolbar { align-items: stretch; flex-direction: column; }
       .schedule-grid { grid-template-columns: 44px minmax(0, 1fr); align-items: start; }
       .schedule-grid .head { display: none; }
@@ -249,6 +256,7 @@
           <button type="button" class="secondary" id="newCloudSale" disabled>Limpiar / nueva venta</button>
           <button type="button" id="sendForSignature" disabled>Enviar firma digital al cliente</button>
         </div>
+        <p class="storage-note">Firma digital: entra con el correo del vendedor, completa el email del cliente, guarda la venta y luego envia el enlace DocuSeal.</p>
         <div class="signature-result" id="signatureResult"></div>
         <section class="cloud-recent" id="cloudRecent" hidden>
           <h3>Ventas centrales recientes</h3>
@@ -278,11 +286,20 @@
       </div>
       <form id="saleForm" class="grid">
         <div class="section-title">Cliente</div>
-        <label>Nombre <input id="first_name"></label>
-        <label>Segundo nombre <input id="middle_name"></label>
-        <label>Apellido <input id="last_name"></label>
-        <label>Segundo apellido <input id="second_last_name"></label>
-        <label class="full">Direccion <input id="address"></label>
+        <div class="name-grid">
+          <label>Nombre <input id="first_name"></label>
+          <label>Segundo nombre <input id="middle_name"></label>
+          <label>Apellido <input id="last_name"></label>
+          <label>Segundo apellido <input id="second_last_name"></label>
+        </div>
+        <div class="full">
+          <div class="address-tools">
+            <label>Direccion <input id="address" autocomplete="street-address"></label>
+            <button type="button" class="secondary" id="detectAddress">Detectar direccion</button>
+          </div>
+          <div id="addressStatus" class="status">Pega o escribe una direccion y el sistema intentara completar ciudad, estado y ZIP.</div>
+          <div id="addressSuggestions" class="address-suggestions"></div>
+        </div>
         <label>Ciudad <input id="city"></label>
         <label>Estado <input id="state"></label>
         <label>Codigo postal <input id="zip_code"></label>
@@ -858,6 +875,78 @@
         $('vinStatus').className = 'status';
       }
     }
+    let addressDetectTimer = null;
+    function addressLineFromResult(result) {
+      const address = result?.address || {};
+      return [address.house_number, address.road || address.pedestrian || address.neighbourhood].filter(Boolean).join(' ') || result?.display_name?.split(',')[0] || val('address');
+    }
+    function cityFromResult(result) {
+      const address = result?.address || {};
+      return address.city || address.town || address.village || address.hamlet || address.county || '';
+    }
+    function stateFromResult(result) {
+      const address = result?.address || {};
+      const code = String(address['ISO3166-2-lvl4'] || '').split('-').pop();
+      return code || address.state || '';
+    }
+    function renderAddressSuggestions(results) {
+      const box = $('addressSuggestions');
+      if (!box) return;
+      box.replaceChildren();
+      box.classList.toggle('visible', Boolean(results?.length));
+      (results || []).forEach(result => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'address-suggestion';
+        button.textContent = result.display_name;
+        button.addEventListener('click', () => {
+          const address = result.address || {};
+          $('address').value = addressLineFromResult(result);
+          $('city').value = cityFromResult(result);
+          $('state').value = stateFromResult(result);
+          $('zip_code').value = address.postcode || '';
+          $('addressStatus').textContent = 'Direccion detectada y completada.';
+          $('addressStatus').className = 'status good';
+          box.classList.remove('visible');
+          renderDocs();
+        });
+        box.append(button);
+      });
+    }
+    async function detectAddress() {
+      const query = val('address');
+      if (query.length < 6) {
+        $('addressStatus').textContent = 'Escribe o pega una direccion mas completa.';
+        $('addressStatus').className = 'status warn';
+        renderAddressSuggestions([]);
+        return;
+      }
+      $('addressStatus').textContent = 'Buscando direccion...';
+      $('addressStatus').className = 'status';
+      try {
+        const params = new URLSearchParams({ format: 'jsonv2', addressdetails: '1', limit: '5', countrycodes: 'us', q: query });
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
+        if (!response.ok) throw new Error('No se pudo consultar direccion');
+        const results = await response.json();
+        if (!results.length) {
+          $('addressStatus').textContent = 'No encontre una direccion clara. Puedes completarla manualmente.';
+          $('addressStatus').className = 'status warn';
+          renderAddressSuggestions([]);
+          return;
+        }
+        $('addressStatus').textContent = results.length === 1 ? 'Selecciona la direccion detectada.' : 'Selecciona la direccion correcta.';
+        $('addressStatus').className = 'status good';
+        renderAddressSuggestions(results);
+      } catch (error) {
+        $('addressStatus').textContent = 'No se pudo detectar la direccion. Puedes completarla manualmente.';
+        $('addressStatus').className = 'status warn';
+      }
+    }
+    function scheduleAddressDetect() {
+      clearTimeout(addressDetectTimer);
+      if (val('address').length < 12) return;
+      addressDetectTimer = setTimeout(detectAddress, 900);
+    }
     function collectFormData() {
       ensureDefaultDates();
       return ids.reduce((data, id) => {
@@ -943,6 +1032,9 @@
       renderDocs();
     }));
     $('vin').addEventListener('input', scheduleVinDecode);
+    $('address').addEventListener('input', scheduleAddressDetect);
+    $('address').addEventListener('paste', () => setTimeout(detectAddress, 200));
+    $('detectAddress').addEventListener('click', detectAddress);
     $('refreshDocs').addEventListener('click', renderDocs);
     $('decodeVin').addEventListener('click', decodeVin);
     $('saveSale').addEventListener('click', saveSale);
