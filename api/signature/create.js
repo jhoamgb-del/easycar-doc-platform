@@ -8,7 +8,8 @@ function docusealConfig() {
     apiKey,
     apiUrl: (process.env.DOCUSEAL_API_URL || 'https://api.docuseal.com').replace(/\/$/, ''),
     customerRole: process.env.DOCUSEAL_CUSTOMER_ROLE || 'Customer',
-    replyTo: process.env.DOCUSEAL_REPLY_TO || 'sales@easycarus.com'
+    replyTo: process.env.DOCUSEAL_REPLY_TO || 'sales@easycarus.com',
+    bccCompleted: process.env.DOCUSEAL_BCC_COMPLETED || 'sales@easycarus.com'
   };
 }
 
@@ -106,6 +107,7 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
       order: 'preserved',
       merge_documents: true,
       reply_to: config.replyTo,
+      bcc_completed: config.bccCompleted,
       documents: [{
         name: `EasyCar ${saleType} Document Package`,
         html,
