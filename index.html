@@ -44,10 +44,11 @@
     .address-suggestions.visible { display: grid; }
     .address-suggestion { min-height: 36px; padding: 8px 10px; border-radius: 5px; background: #fff; color: var(--dark); border: 1px solid var(--line); text-align: left; font-weight: 700; }
     .address-suggestion small { display: block; margin-top: 2px; color: var(--muted); font-weight: 600; }
-    .down-summary { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #f7fbff; }
-    .down-stat { display: grid; gap: 2px; }
-    .down-stat span { font-size: .72rem; color: var(--muted); font-weight: 800; text-transform: uppercase; }
-    .down-stat strong { font-size: 1rem; color: var(--blue); }
+    .down-summary { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border: 1px solid #b8c8dc; border-radius: 7px; overflow: hidden; background: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.5); }
+    .down-summary label { padding: 10px 11px; border-right: 1px solid #d8e1ee; background: #f8fbff; gap: 5px; }
+    .down-summary label:last-child { border-right: 0; }
+    .down-summary input { min-height: 36px; border-color: transparent; background: #fff; font-size: 1rem; font-weight: 800; color: var(--dark); }
+    .down-summary input[readonly] { background: #edf5ff; color: var(--blue); }
     label { display: grid; gap: 6px; color: #2f3b51; font-size: .82rem; font-weight: 700; text-transform: uppercase; }
     input, select, textarea { width: 100%; min-height: 42px; border: 1px solid #bac5d6; border-radius: 6px; padding: 10px 11px; font: inherit; background: #fffdf3; color: var(--ink); }
     input[readonly] { background: #eef4fb; color: #34445e; }
@@ -118,6 +119,8 @@
       .grid { grid-template-columns: 1fr; }
       .name-grid { grid-template-columns: 1fr; }
       .address-tools, .down-summary { grid-template-columns: 1fr; }
+      .down-summary label { border-right: 0; border-bottom: 1px solid #d8e1ee; }
+      .down-summary label:last-child { border-bottom: 0; }
       .toolbar { align-items: stretch; flex-direction: column; }
       .schedule-grid { grid-template-columns: 44px minmax(0, 1fr); align-items: start; }
       .schedule-grid .head { display: none; }
@@ -346,14 +349,11 @@
         <label>Fecha limite 10 dias <input id="conditional_deadline" readonly></label>
 
         <div class="section-title">Financiamiento de inicial / Pago diferido</div>
-        <label>Monto total del down <input id="pickup_down_total"></label>
-        <label>Pagado hoy al entregar <input id="pickup_down_paid_today"></label>
-        <label>Saldo a financiar <input id="pickup_finance_amount" readonly></label>
-        <label>Porcentaje cobrado <input id="pickup_down_collected_percent" readonly></label>
         <div class="down-summary">
-          <div class="down-stat"><span>Inicial total</span><strong id="downTotalStat">$0.00</strong></div>
-          <div class="down-stat"><span>Cobrado hoy</span><strong id="downPaidStat">$0.00</strong></div>
-          <div class="down-stat"><span>% para entregar</span><strong id="downPercentStat">0.00%</strong></div>
+          <label>Inicial total <input id="pickup_down_total"></label>
+          <label>Pagado hoy <input id="pickup_down_paid_today"></label>
+          <label>Saldo a financiar <input id="pickup_finance_amount" readonly></label>
+          <label>% cobrado <input id="pickup_down_collected_percent" readonly></label>
         </div>
         <label>Interes anual <select id="pickup_interest_rate"><option value="0" selected>0%</option><option value="5">5%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option><option value="30">30%</option></select></label>
         <label>Fecha primer pago <input id="pickup_start_date" type="date" readonly></label>
@@ -597,9 +597,6 @@
       const percent = total > 0 ? (paid / total) * 100 : 0;
       if ($('pickup_finance_amount')) $('pickup_finance_amount').value = total || paid ? financed.toFixed(2) : '';
       if ($('pickup_down_collected_percent')) $('pickup_down_collected_percent').value = total ? `${percent.toFixed(2)}%` : '';
-      if ($('downTotalStat')) $('downTotalStat').textContent = moneyFromNumber(total);
-      if ($('downPaidStat')) $('downPaidStat').textContent = moneyFromNumber(paid);
-      if ($('downPercentStat')) $('downPercentStat').textContent = `${percent.toFixed(2)}%`;
     }
     function pickupScheduleDetails() {
       const amount = parseMoney('pickup_finance_amount');
@@ -915,6 +912,20 @@
     let addressDetectTimer = null;
     let addressRequest = null;
     let lastAddressQuery = '';
+    function cleanAddressQuery(text) {
+      return String(text || '')
+        .replace(/\b(USA|United States|Estados Unidos)\b/ig, '')
+        .replace(/\s+/g, ' ')
+        .replace(/\s*,\s*/g, ', ')
+        .trim();
+    }
+    function addressQueries() {
+      const base = cleanAddressQuery(val('address'));
+      const cityLine = [val('city'), val('state'), val('zip_code')].filter(Boolean).join(' ');
+      const withCity = cleanAddressQuery([base, cityLine].filter(Boolean).join(' '));
+      const withoutUnit = cleanAddressQuery(base.replace(/\b(?:apt|apartment|unit|ste|suite|#)\s*[a-z0-9-]+/ig, ''));
+      return [...new Set([withCity, base, withoutUnit].filter(query => query.length >= 5))];
+    }
     function addressLineFromResult(result) {
       const address = result?.address || {};
       return [address.house_number, address.road || address.pedestrian || address.neighbourhood].filter(Boolean).join(' ') || result?.display_name?.split(',')[0] || val('address');
@@ -927,6 +938,12 @@
       const address = result?.address || {};
       const code = String(address['ISO3166-2-lvl4'] || '').split('-').pop();
       return code || address.state || '';
+    }
+    async function fetchAddressCandidates(query, signal) {
+      const params = new URLSearchParams({ format: 'jsonv2', addressdetails: '1', limit: '7', countrycodes: 'us', dedupe: '1', q: query });
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { signal });
+      if (!response.ok) throw new Error('No se pudo consultar direccion');
+      return response.json();
     }
     function renderAddressSuggestions(results) {
       const box = $('addressSuggestions');
@@ -955,26 +972,28 @@
       });
     }
     async function detectAddress() {
-      const query = val('address');
-      if (query.length < 5) {
+      const queries = addressQueries();
+      if (!queries.length) {
         $('addressStatus').textContent = 'Escribe al menos numero y calle para ver opciones.';
         $('addressStatus').className = 'status warn';
         renderAddressSuggestions([]);
         return;
       }
-      if (query === lastAddressQuery && $('addressSuggestions')?.classList.contains('visible')) return;
-      lastAddressQuery = query;
+      const queryKey = queries.join('|');
+      if (queryKey === lastAddressQuery && $('addressSuggestions')?.classList.contains('visible')) return;
+      lastAddressQuery = queryKey;
       if (addressRequest) addressRequest.abort();
       addressRequest = new AbortController();
       $('addressStatus').textContent = 'Buscando direccion...';
       $('addressStatus').className = 'status';
       try {
-        const params = new URLSearchParams({ format: 'jsonv2', addressdetails: '1', limit: '7', countrycodes: 'us', q: query });
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { signal: addressRequest.signal });
-        if (!response.ok) throw new Error('No se pudo consultar direccion');
-        const results = await response.json();
+        let results = [];
+        for (const query of queries) {
+          results = await fetchAddressCandidates(query, addressRequest.signal);
+          if (results.length) break;
+        }
         if (!results.length) {
-          $('addressStatus').textContent = 'No encontre una direccion clara. Puedes completarla manualmente.';
+          $('addressStatus').textContent = 'No encontre opciones confiables. Revisa numero, calle, ciudad o ZIP.';
           $('addressStatus').className = 'status warn';
           renderAddressSuggestions([]);
           return;
@@ -990,9 +1009,10 @@
     }
     function scheduleAddressDetect() {
       clearTimeout(addressDetectTimer);
-      renderAddressSuggestions([]);
       if (val('address').length < 5) return;
-      addressDetectTimer = setTimeout(detectAddress, 450);
+      $('addressStatus').textContent = 'Preparando sugerencias de direccion...';
+      $('addressStatus').className = 'status';
+      addressDetectTimer = setTimeout(detectAddress, 650);
     }
     function collectFormData() {
       ensureDefaultDates();
