@@ -11,7 +11,8 @@ function docusealConfig() {
     replyTo: process.env.DOCUSEAL_REPLY_TO || 'sales@easycarus.com',
     bccCompleted: process.env.DOCUSEAL_BCC_COMPLETED || 'sales@easycarus.com',
     sendSms: process.env.DOCUSEAL_SEND_SMS !== 'false',
-    requirePhone2fa: process.env.DOCUSEAL_REQUIRE_PHONE_2FA === 'true'
+    requirePhone2fa: process.env.DOCUSEAL_REQUIRE_PHONE_2FA !== 'false',
+    requireEmail2fa: process.env.DOCUSEAL_REQUIRE_EMAIL_2FA === 'true'
   };
 }
 
@@ -50,6 +51,43 @@ function saleRecord(formData, ownerId) {
     status: 'draft',
     form_data: formData
   };
+}
+
+function parseMoneyValue(value) {
+  return Number(String(value || '').replace(/[^0-9.-]/g, '')) || 0;
+}
+
+function requiredSignatureErrors(form) {
+  const errors = [];
+  const required = [
+    ['first_name', 'Nombre del cliente'],
+    ['last_name', 'Apellido del cliente'],
+    ['customer_email', 'Email del cliente'],
+    ['driver_license', 'Licencia, pasaporte o ID'],
+    ['vin', 'VIN'],
+    ['vehicle_year', 'Año del vehiculo'],
+    ['vehicle_make', 'Marca del vehiculo'],
+    ['vehicle_model', 'Modelo del vehiculo'],
+    ['vehicle_mileage', 'Millas del vehiculo'],
+    ['transaction_date', 'Fecha de venta'],
+    ['sales_rep_name', 'Nombre del vendedor'],
+    ['pickup_down_total', 'Monto total de la inicial'],
+    ['pickup_start_date', 'Fecha del primer pago'],
+    ['pickup_payment_count', 'Tiempo/cantidad de pagos'],
+    ['pickup_frequency', 'Frecuencia de pago'],
+    ['pickup_interest_rate', 'Interes anual']
+  ];
+  for (const [key, label] of required) {
+    if (!String(form[key] ?? '').trim()) errors.push(label);
+  }
+  if (!normalizedPhone(form)) errors.push('Telefono valido para codigo SMS');
+  if (form.customer_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.customer_email))) errors.push('Email valido del cliente');
+  if (parseMoneyValue(form.pickup_down_total) <= 0) errors.push('Monto total de la inicial mayor que $0');
+  const paymentCount = Number(form.pickup_payment_count);
+  if (!Number.isFinite(paymentCount) || paymentCount < 1 || paymentCount > 14) errors.push('Cantidad de pagos entre 1 y 14');
+  const interest = Number(form.pickup_interest_rate);
+  if (!Number.isFinite(interest) || interest < 0 || interest > 30) errors.push('Interes anual entre 0% y 30%');
+  return [...new Set(errors)];
 }
 
 async function defaultSellerId(supabase, replyTo) {
@@ -93,19 +131,20 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
   const html = renderDocusealHtml(form);
   const saleType = form.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
   const phone = normalizedPhone(form);
+  const missing = requiredSignatureErrors(form);
+  if (missing.length) throw new Error(`Faltan datos obligatorios antes de enviar: ${missing.join(', ')}`);
   const customerSubmitter = {
     role: config.customerRole,
     email,
     name,
     external_id: sale.id,
     reply_to: config.replyTo,
-    require_email_2fa: true
+    phone,
+    send_sms: true,
+    require_phone_2fa: config.requirePhone2fa,
+    require_email_2fa: config.requireEmail2fa
   };
-  if (phone && config.sendSms) {
-    customerSubmitter.phone = phone;
-    customerSubmitter.send_sms = true;
-    customerSubmitter.require_phone_2fa = config.requirePhone2fa;
-  }
+  if (!config.sendSms) throw new Error('La verificacion por SMS esta desactivada en la configuracion');
   const response = await fetch(`${config.apiUrl}/submissions/html`, {
     method: 'POST',
     headers: {
@@ -126,7 +165,7 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
         html_footer: renderDocusealFooter(),
         size: 'Letter'
       }],
-      send_sms: Boolean(phone && config.sendSms),
+      send_sms: true,
       submitters: [customerSubmitter],
       message: {
         subject: `EasyCar - ${saleType} documents ready for your signature`,
@@ -180,7 +219,6 @@ export default async function handler(req, res) {
 
   try {
     const saleId = req.body?.saleId;
-    const config = docusealConfig();
 
     if (saleId) {
       const auth = await authenticateRequest(req);
@@ -199,8 +237,12 @@ export default async function handler(req, res) {
 
     const formData = req.body?.formData;
     if (!formData || typeof formData !== 'object') return json(res, 400, { error: 'formData is required' });
-    if (!formData.customer_email) return json(res, 400, { error: 'Customer email is required before sending' });
+    const missing = requiredSignatureErrors(formData);
+    if (missing.length) {
+      return json(res, 400, { error: `Faltan datos obligatorios antes de enviar: ${missing.join(', ')}` });
+    }
 
+    const config = docusealConfig();
     const supabase = adminClient();
     const ownerId = await defaultSellerId(supabase, config.replyTo);
     const { data: sale, error: saleError } = await supabase

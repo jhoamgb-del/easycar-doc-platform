@@ -51,6 +51,7 @@
     .down-summary input[readonly] { background: #edf5ff; color: var(--blue); }
     label { display: grid; gap: 6px; color: #2f3b51; font-size: .82rem; font-weight: 700; text-transform: uppercase; }
     input, select, textarea { width: 100%; min-height: 42px; border: 1px solid #bac5d6; border-radius: 6px; padding: 10px 11px; font: inherit; background: #fffdf3; color: var(--ink); }
+    input.field-error, select.field-error, textarea.field-error { border-color: var(--red); background: #fff1f3; box-shadow: 0 0 0 2px rgba(237,28,46,.12); }
     input[readonly] { background: #eef4fb; color: #34445e; }
     textarea { min-height: 70px; resize: vertical; }
     .section-title { grid-column: 1 / -1; margin-top: 5px; padding: 9px 12px; background: var(--dark); color: #fff; border-left: 5px solid var(--red); border-radius: 6px; font-weight: 800; }
@@ -271,7 +272,7 @@
           <button type="button" class="secondary" id="newCloudSale">Limpiar / nueva venta</button>
           <button type="button" id="sendForSignature">Enviar firma digital al cliente</button>
         </div>
-        <p class="storage-note">Firma digital: completa el email del cliente y envia DocuSeal en el momento. EasyCar queda como contacto de respuesta y el vendedor puede entrar despues para revisar el expediente central.</p>
+        <p class="storage-note">Firma digital: el contrato llega al email del cliente, pero el codigo obligatorio para firmar llega por SMS al telefono del cliente. EasyCar queda como contacto de respuesta y copia final.</p>
         <div class="signature-result" id="signatureResult"></div>
         <section class="cloud-recent" id="cloudRecent" hidden>
           <h3>Ventas centrales recientes</h3>
@@ -321,7 +322,7 @@
         <label>Email del cliente para firma digital <input id="customer_email" type="email"></label>
         <label>Telefono <input id="phone"></label>
         <label>Telefono alterno <input id="alternate_phone"></label>
-        <label>Licencia / ID <input id="driver_license"></label>
+        <label>Licencia / pasaporte / ID <input id="driver_license"></label>
         <label>Co-buyer <input id="co_buyer_name"></label>
 
         <div class="section-title">Vehiculo</div>

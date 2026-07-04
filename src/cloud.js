@@ -77,6 +77,83 @@ function saleRecord(formData) {
   };
 }
 
+function normalizedPhone(formData) {
+  const candidates = [formData.phone, formData.alternate_phone].filter(Boolean);
+  for (const candidate of candidates) {
+    const matches = String(candidate).match(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g) || [];
+    for (const match of matches) {
+      const digits = match.replace(/\D/g, '');
+      if (digits.length === 10 || (digits.length === 11 && digits.startsWith('1'))) return true;
+    }
+  }
+  return false;
+}
+
+function moneyNumber(value) {
+  return Number(String(value || '').replace(/[^0-9.-]/g, '')) || 0;
+}
+
+function markField(id, invalid) {
+  const field = byId(id);
+  if (!field) return;
+  field.classList.toggle('field-error', invalid);
+  field.setAttribute('aria-invalid', invalid ? 'true' : 'false');
+}
+
+function validateForSignature(formData) {
+  const required = [
+    ['first_name', 'Nombre del cliente'],
+    ['last_name', 'Apellido del cliente'],
+    ['customer_email', 'Email del cliente'],
+    ['phone', 'Telefono para codigo SMS'],
+    ['driver_license', 'Licencia, pasaporte o ID'],
+    ['vin', 'VIN'],
+    ['vehicle_year', 'Año del vehiculo'],
+    ['vehicle_make', 'Marca del vehiculo'],
+    ['vehicle_model', 'Modelo del vehiculo'],
+    ['vehicle_mileage', 'Millas del vehiculo'],
+    ['transaction_date', 'Fecha de venta'],
+    ['sales_rep_name', 'Nombre del vendedor'],
+    ['pickup_down_total', 'Monto total de la inicial'],
+    ['pickup_start_date', 'Fecha del primer pago'],
+    ['pickup_payment_count', 'Tiempo/cantidad de pagos'],
+    ['pickup_frequency', 'Frecuencia de pago'],
+    ['pickup_interest_rate', 'Interes anual']
+  ];
+  const missing = [];
+  const invalidIds = new Set();
+  for (const [id, label] of required) {
+    if (!String(formData[id] ?? '').trim()) {
+      missing.push(label);
+      invalidIds.add(id);
+    }
+  }
+  if (formData.customer_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.customer_email)) {
+    missing.push('Email valido del cliente');
+    invalidIds.add('customer_email');
+  }
+  if (!normalizedPhone(formData)) {
+    missing.push('Telefono valido para recibir SMS');
+    invalidIds.add('phone');
+  }
+  if (moneyNumber(formData.pickup_down_total) <= 0) {
+    missing.push('Monto total de la inicial mayor que $0');
+    invalidIds.add('pickup_down_total');
+  }
+  const paymentCount = Number(formData.pickup_payment_count);
+  if (!Number.isFinite(paymentCount) || paymentCount < 1 || paymentCount > 14) {
+    missing.push('Cantidad de pagos entre 1 y 14');
+    invalidIds.add('pickup_payment_count');
+  }
+  const interest = Number(formData.pickup_interest_rate);
+  if (!Number.isFinite(interest) || interest < 0 || interest > 30) {
+    missing.push('Interes anual entre 0% y 30%');
+    invalidIds.add('pickup_interest_rate');
+  }
+  required.forEach(([id]) => markField(id, invalidIds.has(id)));
+  return [...new Set(missing)];
+}
+
 async function saveSale(formData) {
   if (!supabase || !session?.user) return null;
   const record = saleRecord(formData);
@@ -150,11 +227,16 @@ async function loadRecentSales() {
 
 async function sendForSignature() {
   const formData = app.collectFormData();
-  if (!formData.customer_email) throw new Error('Agrega el email del cliente para enviar la firma digital');
+  const missing = validateForSignature(formData);
+  if (missing.length) {
+    const firstInvalid = document.querySelector('.field-error');
+    if (firstInvalid) firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    throw new Error(`No se puede enviar todavia. Falta: ${missing.join(', ')}`);
+  }
   const sale = session?.access_token ? await saveSale(formData) : null;
 
   const saleType = formData.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
-  const approved = window.confirm(`Se enviaran los documentos ${saleType} al cliente ${formData.customer_email} para firma digital. EasyCar queda como contacto de seguimiento. ¿Continuar?`);
+  const approved = window.confirm(`Se enviaran los documentos ${saleType} al email ${formData.customer_email}. El codigo obligatorio de firma llegara por SMS al telefono ${formData.phone}. ¿Continuar?`);
   if (!approved) return;
 
   setCloudStatus('Creando expediente y enviando la solicitud al cliente...', '');
