@@ -9,7 +9,9 @@ function docusealConfig() {
     apiUrl: (process.env.DOCUSEAL_API_URL || 'https://api.docuseal.com').replace(/\/$/, ''),
     customerRole: process.env.DOCUSEAL_CUSTOMER_ROLE || 'Customer',
     replyTo: process.env.DOCUSEAL_REPLY_TO || 'sales@easycarus.com',
-    bccCompleted: process.env.DOCUSEAL_BCC_COMPLETED || 'sales@easycarus.com'
+    bccCompleted: process.env.DOCUSEAL_BCC_COMPLETED || 'sales@easycarus.com',
+    sendSms: process.env.DOCUSEAL_SEND_SMS !== 'false',
+    requirePhone2fa: process.env.DOCUSEAL_REQUIRE_PHONE_2FA === 'true'
   };
 }
 
@@ -18,9 +20,18 @@ function customerName(form) {
 }
 
 function normalizedPhone(form) {
-  const digits = String(form.phone || form.alternate_phone || '').replace(/\D/g, '');
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  const candidates = [form.phone, form.alternate_phone].filter(Boolean);
+  for (const candidate of candidates) {
+    const matches = String(candidate).match(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g) || [];
+    for (const match of matches) {
+      const digits = match.replace(/\D/g, '');
+      if (digits.length === 10) return `+1${digits}`;
+      if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+    }
+    const digits = String(candidate).replace(/\D/g, '');
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  }
   return '';
 }
 
@@ -90,10 +101,10 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
     reply_to: config.replyTo,
     require_email_2fa: true
   };
-  if (phone) {
+  if (phone && config.sendSms) {
     customerSubmitter.phone = phone;
     customerSubmitter.send_sms = true;
-    customerSubmitter.require_phone_2fa = true;
+    customerSubmitter.require_phone_2fa = config.requirePhone2fa;
   }
   const response = await fetch(`${config.apiUrl}/submissions/html`, {
     method: 'POST',
@@ -115,7 +126,7 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
         html_footer: renderDocusealFooter(),
         size: 'Letter'
       }],
-      send_sms: Boolean(phone),
+      send_sms: Boolean(phone && config.sendSms),
       submitters: [customerSubmitter],
       message: {
         subject: `EasyCar - ${saleType} documents ready for your signature`,
