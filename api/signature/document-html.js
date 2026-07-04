@@ -102,7 +102,14 @@ function applyPickupLoanClauses(doc) {
       ['Borrower had the opportunity to ask questions and to seek independent advice before signing. Borrower acknowledges receiving and reviewing the schedule, disclosures, and documents that form part of the vehicle sale and financing package.', 'El Deudor tuvo oportunidad de hacer preguntas y buscar asesoria independiente antes de firmar. El Deudor reconoce haber recibido y revisado el calendario, divulgaciones y documentos que forman parte del paquete de venta y financiamiento del vehiculo.'],
       ['This Agreement and the signed vehicle sale and financing package are the entire agreement regarding the deferred down payment obligation. Prior oral discussions or promises are not binding unless included in the written signed documents.', 'Este Acuerdo y el paquete firmado de venta y financiamiento del vehiculo constituyen el acuerdo completo respecto a la obligacion de pago inicial diferido. Conversaciones o promesas verbales previas no son vinculantes salvo que esten incluidas en los documentos escritos firmados.']
     ] },
-    { type: 'p', text: '7. DISCLOSURE SUMMARY / RESUMEN DE DIVULGACION' },
+    { type: 'p', text: '7. REQUIRED NOTICES AND LEGAL COMPLIANCE / AVISOS REQUERIDOS Y CUMPLIMIENTO LEGAL' },
+    { type: 'table', rows: [
+      ['Borrower should not sign this Agreement before reading it or if it contains blanks that should be completed. Borrower is entitled to receive a copy of this Agreement and the related payment schedule after signing.', 'El Deudor no debe firmar este Acuerdo antes de leerlo ni si contiene espacios en blanco que deban completarse. El Deudor tiene derecho a recibir una copia de este Acuerdo y del calendario de pagos relacionado despues de firmar.'],
+      ['No interest, finance charge, fee, collection cost, or other amount is intended to exceed the maximum permitted by applicable law. If any amount is determined to exceed the lawful limit, it shall be reduced to the maximum lawful amount and any excess shall be credited or refunded as required by law.', 'Ningun interes, cargo financiero, cargo, costo de cobro u otro monto busca exceder el maximo permitido por la ley aplicable. Si algun monto excede el limite legal, sera reducido al maximo legal y cualquier exceso sera acreditado o reembolsado segun exija la ley.'],
+      ['There is no automatic cancellation or cooling-off period unless required by applicable law or stated in a separate written disclosure signed or provided by EASYCAR LLC. If a written cancellation right applies, Borrower must follow that written notice exactly.', 'No existe cancelacion automatica ni periodo de arrepentimiento salvo que lo exija la ley aplicable o que conste en una divulgacion escrita separada firmada o provista por EASYCAR LLC. Si aplica un derecho escrito de cancelacion, el Deudor debe seguir exactamente ese aviso escrito.'],
+      ['Any dispute-resolution or arbitration provision contained in a separately signed sale, finance, or arbitration document remains part of the transaction package and controls to the extent permitted by law.', 'Cualquier disposicion de resolucion de disputas o arbitraje contenida en un documento separado de venta, financiamiento o arbitraje firmado forma parte del paquete de la transaccion y prevalece en la medida permitida por la ley.']
+    ] },
+    { type: 'p', text: '8. DISCLOSURE SUMMARY / RESUMEN DE DIVULGACION' },
     { type: 'table', rows: [
       ['Principal Amount Financed / Monto financiado: {{pickup_finance_money}}', 'Annual Interest Rate / Interes anual: {{pickup_interest_rate_percent}}'],
       ['Finance Charge / Cargo financiero: {{pickup_finance_charge_money}}', 'Total of Payments / Total de pagos: {{pickup_total_payments_money}}'],
@@ -430,6 +437,7 @@ function fillText(form, text) {
   if (out.trim() === 'Date') out = `Date: ${date}`;
   out = out.replace(/EASYCAR LLC REP:/g, `EASYCAR LLC REP: ${sellerName}`);
   out = out.replace(/\(10 PAYMENTS \/ PAGOS\)/g, `(${raw(form, 'pickup_payment_count') || 10} PAYMENTS / PAGOS)`);
+  out = out.replace(/_{8,}/g, '____________________________');
   return out;
 }
 
@@ -489,7 +497,7 @@ function renderSignatureTable(form, rows, doc) {
     const isCustomer = /CUSTOMER|CLIENTE|BUYER|COMPRADOR|CARDHOLDER|BORROWER|DEUDOR/i.test(originalLabel);
     const label = esc(signatureLabel(originalLabel));
     const name = isDealer ? sellerName : isCoBuyer ? coBuyerName : customerName;
-    const field = isCustomer || isCoBuyer ? `<div class="sign-field">${signatureField(`${DOC_TITLES[doc?.key] || 'Document'} ${index + 1} Signature`, !isCoBuyer || Boolean(coBuyerName))}</div>` : '<div class="manual-line">X ______________________________</div>';
+    const field = isCustomer || isCoBuyer ? `<div class="sign-field">${signatureField(`${DOC_TITLES[doc?.key] || 'Document'} ${index + 1} Signature`, !isCoBuyer || Boolean(coBuyerName))}</div>` : '<div class="manual-line">X</div>';
     return `<td><strong>${label}</strong><div class="printed-name">Name/Nombre: ${esc(name)}</div>${field}<div class="printed-date">Date/Fecha: ${esc(date)}</div></td>`;
   }).join('');
   return `<table class="signature-table"><tbody><tr>${cells}</tr></tbody></table>`;
@@ -555,8 +563,9 @@ export function renderDocusealHtml(form) {
     .signature-block { page-break-inside: avoid; break-inside: avoid; margin-top: 4pt; }
     .signature-table { page-break-inside: avoid; break-inside: avoid; }
     .signature-table td { font-size: 7.05pt; min-height: 48px; }
+    .signature-table tr:first-child td { background: #fff; font-weight: 400; }
     .printed-name, .printed-date { margin-top: 2.5pt; }
-    .manual-line { margin-top: 5pt; }
+    .manual-line { margin-top: 5pt; height: 18pt; border-bottom: .9pt solid #12233d; }
     .sign-field { margin-top: 2.5pt; min-height: 35px; }
     .doc-creditapp td, .doc-communication td, .doc-conditional td { padding: 2.1pt 3pt; }
     .doc-creditapp h2, .doc-communication h2, .doc-conditional h2 { font-size: 10.8pt; margin-bottom: 3.5pt; }

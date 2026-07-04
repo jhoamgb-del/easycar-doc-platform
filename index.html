@@ -107,6 +107,10 @@
     .doc tr:first-child td { background: #f2f5fa; font-weight: 700; color: var(--dark); }
     .doc table.info tr:first-child td { background: #fff; font-weight: 400; }
     .doc table.choice td { font-weight: 700; }
+    .signature-table td { min-height: 96px; }
+    .doc .signature-table tr:first-child td { background: #fff; font-weight: 400; }
+    .signature-name, .signature-date { margin-top: 8px; font-size: .84rem; font-weight: 700; color: #26364d; }
+    .signature-line { margin: 14px 0 3px; height: 24px; border-bottom: 1.5px solid #12233d; }
     .doc-letterhead { display: grid; grid-template-columns: 180px 1fr; align-items: center; gap: 18px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 3px solid var(--red); }
     .doc-letterhead img { width: 180px; max-height: 54px; object-fit: contain; object-position: left center; }
     .doc-letterhead div { text-align: right; color: var(--dark); font-size: .76rem; line-height: 1.35; font-weight: 700; }
@@ -206,6 +210,9 @@
         break-inside: avoid;
         margin-bottom: 0;
       }
+      .signature-table td { min-height: 62px; }
+      .signature-name, .signature-date { margin-top: 3px; font-size: 7pt; }
+      .signature-line { margin: 7px 0 2px; height: 16px; border-bottom: 1pt solid #12233d; }
       #doc-pickup .doc-label,
       #doc-pickup .source-name { margin-bottom: 3px; }
       #doc-pickup h2 { font-size: 12.5pt; margin-bottom: 6px; }
@@ -466,7 +473,14 @@
           ['Borrower had the opportunity to ask questions and to seek independent advice before signing. Borrower acknowledges receiving and reviewing the schedule, disclosures, and documents that form part of the vehicle sale and financing package.', 'El Deudor tuvo oportunidad de hacer preguntas y buscar asesoria independiente antes de firmar. El Deudor reconoce haber recibido y revisado el calendario, divulgaciones y documentos que forman parte del paquete de venta y financiamiento del vehiculo.'],
           ['This Agreement and the signed vehicle sale and financing package are the entire agreement regarding the deferred down payment obligation. Prior oral discussions or promises are not binding unless included in the written signed documents.', 'Este Acuerdo y el paquete firmado de venta y financiamiento del vehiculo constituyen el acuerdo completo respecto a la obligacion de pago inicial diferido. Conversaciones o promesas verbales previas no son vinculantes salvo que esten incluidas en los documentos escritos firmados.']
         ] },
-        { type: 'p', text: '7. DISCLOSURE SUMMARY / RESUMEN DE DIVULGACION' },
+        { type: 'p', text: '7. REQUIRED NOTICES AND LEGAL COMPLIANCE / AVISOS REQUERIDOS Y CUMPLIMIENTO LEGAL' },
+        { type: 'table', rows: [
+          ['Borrower should not sign this Agreement before reading it or if it contains blanks that should be completed. Borrower is entitled to receive a copy of this Agreement and the related payment schedule after signing.', 'El Deudor no debe firmar este Acuerdo antes de leerlo ni si contiene espacios en blanco que deban completarse. El Deudor tiene derecho a recibir una copia de este Acuerdo y del calendario de pagos relacionado despues de firmar.'],
+          ['No interest, finance charge, fee, collection cost, or other amount is intended to exceed the maximum permitted by applicable law. If any amount is determined to exceed the lawful limit, it shall be reduced to the maximum lawful amount and any excess shall be credited or refunded as required by law.', 'Ningun interes, cargo financiero, cargo, costo de cobro u otro monto busca exceder el maximo permitido por la ley aplicable. Si algun monto excede el limite legal, sera reducido al maximo legal y cualquier exceso sera acreditado o reembolsado segun exija la ley.'],
+          ['There is no automatic cancellation or cooling-off period unless required by applicable law or stated in a separate written disclosure signed or provided by EASYCAR LLC. If a written cancellation right applies, Borrower must follow that written notice exactly.', 'No existe cancelacion automatica ni periodo de arrepentimiento salvo que lo exija la ley aplicable o que conste en una divulgacion escrita separada firmada o provista por EASYCAR LLC. Si aplica un derecho escrito de cancelacion, el Deudor debe seguir exactamente ese aviso escrito.'],
+          ['Any dispute-resolution or arbitration provision contained in a separately signed sale, finance, or arbitration document remains part of the transaction package and controls to the extent permitted by law.', 'Cualquier disposicion de resolucion de disputas o arbitraje contenida en un documento separado de venta, financiamiento o arbitraje firmado forma parte del paquete de la transaccion y prevalece en la medida permitida por la ley.']
+        ] },
+        { type: 'p', text: '8. DISCLOSURE SUMMARY / RESUMEN DE DIVULGACION' },
         { type: 'table', rows: [
           ['Principal Amount Financed / Monto financiado: {{pickup_finance_money}}', 'Annual Interest Rate / Interes anual: {{pickup_interest_rate_percent}}'],
           ['Finance Charge / Cargo financiero: {{pickup_finance_charge_money}}', 'Total of Payments / Total de pagos: {{pickup_total_payments_money}}'],
@@ -845,6 +859,7 @@
       if (out.trim() === 'Date') out = `Date: ${transactionDate}`;
       out = out.replace(/EASYCAR LLC REP:/g, `EASYCAR LLC REP: ${salesRepName}`);
       out = out.replace(/\(10 PAYMENTS \/ PAGOS\)/g, `(${val('pickup_payment_count')} PAYMENTS / PAGOS)`);
+      out = out.replace(/_{8,}/g, '____________________________');
       return out;
     }
     function enrichSignatureRows(rows) {
@@ -892,7 +907,39 @@
       if (joined.includes('[ ]') || joined.includes('[  ]')) return 'choice';
       return '';
     }
+    function signatureLabel(label) {
+      const rawLabel = String(label || '').toUpperCase();
+      if (/DEALER REPRESENTATIVE|POR EASYCAR/.test(rawLabel)) return 'DEALER REPRESENTATIVE / POR EASYCAR LLC';
+      if (/EASYCAR LLC REP/.test(rawLabel)) return 'EASYCAR LLC REP';
+      if (/EASYCAR LLC SIGNATURE/.test(rawLabel)) return 'EASYCAR LLC SIGNATURE';
+      if (/CARDHOLDER/.test(rawLabel)) return 'CARDHOLDER SIGNATURE / FIRMA DEL TITULAR DE LA TARJETA';
+      if (/BORROWER|DEUDOR/.test(rawLabel)) return 'BORROWER SIGNATURE / FIRMA DEL DEUDOR';
+      if (/CO-BUYER|CO-COMPRADOR/.test(rawLabel)) return 'CO-BUYER / CO-COMPRADOR';
+      if (/BUYER SIGNATURE/.test(rawLabel)) return 'BUYER SIGNATURE';
+      if (/CUSTOMER SIGNATURE/.test(rawLabel)) return 'CUSTOMER SIGNATURE';
+      if (/CUSTOMER|CLIENTE/.test(rawLabel)) return 'CUSTOMER / CLIENTE';
+      return String(label || '').split('\n')[0].replace(/_{3,}/g, '').trim();
+    }
+    function renderSignatureTable(rows) {
+      const transactionDate = dateValue('transaction_date');
+      const customerName = fullName();
+      const salesRepName = val('sales_rep_name');
+      const coBuyerName = val('co_buyer_name') || '';
+      const header = rows[0] || [];
+      const cells = header.map(cell => {
+        const originalLabel = String(cell || '');
+        const isDealer = /EASYCAR|DEALER|REP/i.test(originalLabel);
+        const isCoBuyer = /CO-BUYER|CO-COMPRADOR/i.test(originalLabel);
+        const name = isDealer ? salesRepName : isCoBuyer ? coBuyerName : customerName;
+        return `<td><strong>${esc(signatureLabel(originalLabel))}</strong><div class="signature-name">Name/Nombre: ${esc(name)}</div><div class="signature-line"></div><div>Sign/Firma</div><div class="signature-date">Date/Fecha: ${esc(transactionDate)}</div></td>`;
+      }).join('');
+      return `<table class="signature-table"><tbody><tr>${cells}</tr></tbody></table>`;
+    }
     function renderTable(rows) {
+      const joined = rows.flat().join(' ');
+      const compactEnough = joined.length < 1000 && rows.length <= 4;
+      const signatureLike = compactEnough && /(CUSTOMER|CLIENTE|BUYER|COMPRADOR|CARDHOLDER|BORROWER|DEUDOR|EASYCAR|DEALER|REP)/i.test(joined) && /(\bSIGNATURE\b|\bFIRMA(?:S)?\b|X _|Sign\/Firma)/i.test(joined);
+      if (signatureLike) return renderSignatureTable(rows);
       const isPaymentSchedule = rows[0]?.[0] === '#';
       const paymentCount = Number(val('pickup_payment_count')) || 10;
       const displayRows = enrichSignatureRows(rows);
