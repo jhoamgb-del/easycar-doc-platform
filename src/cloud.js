@@ -44,16 +44,16 @@ function setSessionUi(nextSession) {
   controls.auth.style.display = loggedIn ? 'none' : '';
   controls.user.classList.toggle('visible', loggedIn);
   controls.userEmail.textContent = loggedIn ? session.user.email : '';
-  controls.newSale.disabled = !loggedIn;
-  controls.sendSignature.disabled = !loggedIn;
+  controls.newSale.disabled = false;
+  controls.sendSignature.disabled = false;
   controls.sendSignature.title = loggedIn
     ? 'Enviar los documentos visibles al email del cliente'
-    : 'Primero entra como vendedor para guardar en Supabase y enviar por DocuSeal';
+    : 'Enviar al cliente ahora. EasyCar queda como contacto y expediente central.';
   controls.recent.hidden = !loggedIn;
   setCloudStatus(
     loggedIn
       ? 'Conectado a Supabase. Completa el email del cliente y usa Enviar firma digital al cliente.'
-      : 'Para firma digital: entra con el correo del vendedor. Sin ese acceso el boton de DocuSeal queda bloqueado.',
+      : 'Puedes enviar la firma digital directo al cliente. El acceso del vendedor solo se usa para ver ventas centrales recientes.',
     loggedIn ? 'good' : ''
   );
   if (loggedIn) loadRecentSales();
@@ -149,32 +149,29 @@ async function loadRecentSales() {
 }
 
 async function sendForSignature() {
-  if (!session?.access_token) throw new Error('Inicia sesion antes de enviar');
   const formData = app.collectFormData();
   if (!formData.customer_email) throw new Error('Agrega el email del cliente para enviar la firma digital');
-  const sale = await saveSale(formData);
-  if (!sale) throw new Error('La venta debe guardarse en el expediente central');
+  const sale = session?.access_token ? await saveSale(formData) : null;
 
   const saleType = formData.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
-  const approved = window.confirm(`Se enviaran los documentos ${saleType} de esta venta a ${formData.customer_email} para firma digital. ¿Continuar?`);
+  const approved = window.confirm(`Se enviaran los documentos ${saleType} al cliente ${formData.customer_email} para firma digital. EasyCar queda como contacto de seguimiento. ¿Continuar?`);
   if (!approved) return;
 
-  setCloudStatus('Creando enlace seguro y enviando la solicitud...', '');
+  setCloudStatus('Creando expediente y enviando la solicitud al cliente...', '');
   controls.sendSignature.disabled = true;
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
     const response = await fetch('/api/signature/create', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`
-      },
-      body: JSON.stringify({ saleId: sale.id })
+      headers,
+      body: JSON.stringify(sale ? { saleId: sale.id } : { formData })
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'No se pudo enviar para firma');
-    setCurrentSale(sale.id, 'sent');
+    setCurrentSale(result.saleId || sale?.id, 'sent');
     controls.signatureResult.replaceChildren();
-    const text = document.createTextNode(`Firma digital enviada al cliente: ${result.sentTo}. `);
+    const text = document.createTextNode(`Firma digital enviada al cliente: ${result.sentTo}. EasyCar queda como contacto de respuesta. `);
     controls.signatureResult.append(text);
     if (result.signingUrl) {
       const link = document.createElement('a');
@@ -185,8 +182,8 @@ async function sendForSignature() {
       controls.signatureResult.append(link);
     }
     controls.signatureResult.classList.add('visible');
-    setCloudStatus('La solicitud de firma digital fue enviada correctamente al cliente.', 'good');
-    await loadRecentSales();
+    setCloudStatus('La solicitud fue enviada al cliente y el expediente quedo guardado para EasyCar.', 'good');
+    if (session?.user) await loadRecentSales();
   } finally {
     controls.sendSignature.disabled = false;
   }
@@ -214,7 +211,7 @@ function newSale() {
   setCurrentSale(null);
   app.clearForm();
   controls.signatureResult.classList.remove('visible');
-  setCloudStatus('Formulario limpio para una nueva venta. Completa los datos y guarda en Supabase.', 'good');
+  setCloudStatus('Formulario limpio para una nueva venta. Completa los datos y envia al cliente cuando este listo.', 'good');
 }
 
 window.EasyCarCloud = { saveSale };
