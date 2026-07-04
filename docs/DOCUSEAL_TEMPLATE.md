@@ -9,9 +9,9 @@ Cada venta genera un paquete HTML desde los documentos EasyCar ya adaptados en l
 El tipo de venta controla el paquete:
 
 - `BHPH`: todos los documentos EasyCar.
-- `BANCO`: solo `Pick-Up Payment` y `Credit Card Authorization`.
+- `BANCO`: solo `Initial Financing Agreement` y `Credit Card Authorization`.
 
-Los datos del cliente, vehiculo, VIN, millas, pagos, vendedor y fechas se imprimen directamente en el documento antes de enviarlo. DocuSeal solo pide al cliente completar los campos de firma definidos con `signature-field`.
+Los datos del cliente, vehiculo, VIN, millas, pagos, vendedor, fechas, interes de la inicial, finance charge y total de pagos se imprimen directamente en el documento antes de enviarlo. DocuSeal solo pide al cliente completar los campos de firma definidos con `signature-field`.
 
 ## Campos de firma
 

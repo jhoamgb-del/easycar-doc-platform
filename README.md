@@ -17,7 +17,9 @@ Sistema para preparar, guardar, imprimir y firmar documentos de ventas EasyCar.
 ### Tipos de venta
 
 - **BHPH**: genera todos los documentos EasyCar.
-- **BANCO**: genera solo `Pick-Up Payment` y `Credit Card Authorization`.
+- **BANCO**: genera solo `Initial Financing Agreement` y `Credit Card Authorization`.
+
+El acuerdo de inicial permite escoger interes anual de 0% a 30%, calcula el calendario de pagos, finance charge, total de pagos, interes, capital y saldo. Tambien divulga el cargo de tarjeta de 1.8% y los fees aplicables del acuerdo.
 
 ### Firma fisica
 

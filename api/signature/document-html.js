@@ -26,7 +26,7 @@ const DOC_TITLES = {
   use: 'Personal Vehicle Use',
   history: 'Vehicle History / CARFAX',
   card: 'Credit Card Authorization',
-  pickup: 'Pick-Up Payment',
+  pickup: 'Initial Financing Agreement',
   conditional: 'Conditional Delivery',
   communication: 'Communication Authorization',
   creditapp: 'Credit Application'
@@ -38,9 +38,9 @@ const DOC_SETS = {
 
 const pickupDocument = ORIGINAL_DOCS.find(doc => doc.key === 'pickup');
 const pickupSchedule = pickupDocument?.blocks.find(block => block.type === 'table' && block.rows?.[0]?.[0] === '#');
-if (pickupSchedule && pickupSchedule.rows.length < 13) {
-  for (let i = 11; i <= 12; i++) {
-    pickupSchedule.rows.push([String(i), `{{pickup_date_${i}}}`, `{{pickup_amount_${i}_money}}`, `{{pickup_receipt_${i}}}`]);
+if (pickupSchedule && pickupSchedule.rows.length < 15) {
+  for (let i = pickupSchedule.rows.length; i <= 14; i++) {
+    pickupSchedule.rows.push([String(i), `{{pickup_date_${i}}}`, `{{pickup_amount_${i}_money}}`, `{{pickup_interest_${i}_money}}`, `{{pickup_principal_${i}_money}}`, `{{pickup_balance_${i}_money}}`]);
   }
 }
 
@@ -91,6 +91,14 @@ function moneyValue(form, id) {
   return value ? '$' + value.replace(/^\$/, '') : '';
 }
 
+function parseMoney(form, id) {
+  return Number(raw(form, id).replace(/[^0-9.-]/g, '')) || 0;
+}
+
+function moneyFromNumber(amount) {
+  return '$' + (Number(amount) || 0).toFixed(2);
+}
+
 function monthValue(form, id) {
   const value = raw(form, id);
   const match = value.match(/^(\d{4})-(\d{2})$/);
@@ -118,6 +126,16 @@ function addDays(date, days) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
 
+function addMonths(date, months) {
+  const next = new Date(date);
+  const day = next.getDate();
+  next.setDate(1);
+  next.setMonth(next.getMonth() + months);
+  const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+  next.setDate(Math.min(day, lastDay));
+  return next;
+}
+
 function conditionalDeadline(form) {
   const delivery = parseDate(raw(form, 'conditional_delivery_date')) || parseDate(raw(form, 'transaction_date')) || new Date();
   return formatDate(addDays(delivery, 10));
@@ -127,9 +145,82 @@ function last4(form) {
   return raw(form, 'card_last_four').replace(/\D/g, '').slice(-4);
 }
 
+function pickupPeriodicRate(form) {
+  const annualRate = Math.min(30, Math.max(0, Number(raw(form, 'pickup_interest_rate')) || 0)) / 100;
+  const frequency = raw(form, 'pickup_frequency');
+  if (frequency === 'Bi-Weekly') return annualRate / 26;
+  if (frequency === 'Monthly') return annualRate / 12;
+  return annualRate / 52;
+}
+
+function pickupFrequencyDisplay(form) {
+  const frequency = raw(form, 'pickup_frequency');
+  if (frequency === 'Bi-Weekly') return 'Bi-Weekly / Bi-semanal';
+  if (frequency === 'Monthly') return 'Monthly / Mensual';
+  return 'Weekly / Semanal';
+}
+
+function pickupStartDate(form) {
+  const explicit = parseDate(raw(form, 'pickup_start_date'));
+  if (explicit) return explicit;
+  const saleDate = parseDate(raw(form, 'transaction_date')) || new Date();
+  const frequency = raw(form, 'pickup_frequency');
+  if (frequency === 'Bi-Weekly') return addDays(saleDate, 14);
+  if (frequency === 'Monthly') return addMonths(saleDate, 1);
+  return addDays(saleDate, 7);
+}
+
+function pickupDueDate(form, start, index) {
+  const frequency = raw(form, 'pickup_frequency');
+  if (frequency === 'Bi-Weekly') return new Date(start.getFullYear(), start.getMonth(), start.getDate() + ((index - 1) * 14));
+  if (frequency === 'Monthly') return addMonths(start, index - 1);
+  return new Date(start.getFullYear(), start.getMonth(), start.getDate() + ((index - 1) * 7));
+}
+
+function pickupScheduleDetails(form) {
+  const amount = parseMoney(form, 'pickup_finance_amount');
+  const paymentCount = Math.min(14, Math.max(1, Number(raw(form, 'pickup_payment_count')) || 10));
+  const rate = pickupPeriodicRate(form);
+  const start = pickupStartDate(form);
+  const principalCents = Math.round(amount * 100);
+  const paymentCents = principalCents && rate > 0
+    ? Math.round((principalCents / 100) * rate / (1 - Math.pow(1 + rate, -paymentCount)) * 100)
+    : paymentCount ? Math.floor(principalCents / paymentCount) : 0;
+  const rows = [];
+  let balanceCents = principalCents;
+  let totalPaymentCents = 0;
+  let totalInterestCents = 0;
+  for (let i = 1; i <= paymentCount; i++) {
+    const interestCents = rate > 0 ? Math.round(balanceCents * rate) : 0;
+    let currentPaymentCents = paymentCents;
+    let currentPrincipalCents = currentPaymentCents - interestCents;
+    if (i === paymentCount || currentPrincipalCents > balanceCents) {
+      currentPrincipalCents = balanceCents;
+      currentPaymentCents = currentPrincipalCents + interestCents;
+    }
+    balanceCents = Math.max(0, balanceCents - currentPrincipalCents);
+    totalPaymentCents += currentPaymentCents;
+    totalInterestCents += interestCents;
+    rows.push({
+      number: i,
+      date: pickupDueDate(form, start, i),
+      payment: currentPaymentCents / 100,
+      interest: interestCents / 100,
+      principal: currentPrincipalCents / 100,
+      balance: balanceCents / 100
+    });
+  }
+  return { rows, totalPayments: totalPaymentCents / 100, financeCharge: totalInterestCents / 100 };
+}
+
 function tokenValue(form, key) {
   if (key === 'pickup_down_total_money') return moneyValue(form, 'pickup_down_total');
   if (key === 'pickup_finance_money') return moneyValue(form, 'pickup_finance_amount');
+  if (key === 'pickup_interest_rate_percent') return `${Math.min(30, Math.max(0, Number(raw(form, 'pickup_interest_rate')) || 0)).toFixed(2)}%`;
+  if (key === 'pickup_finance_charge_money') return raw(form, 'pickup_finance_charge') ? moneyValue(form, 'pickup_finance_charge') : moneyFromNumber(pickupScheduleDetails(form).financeCharge);
+  if (key === 'pickup_total_payments_money') return raw(form, 'pickup_total_payments') ? moneyValue(form, 'pickup_total_payments') : moneyFromNumber(pickupScheduleDetails(form).totalPayments);
+  if (key === 'pickup_frequency_display') return pickupFrequencyDisplay(form);
+  if (key === 'pickup_start_date_display') return formatDate(pickupStartDate(form));
   if (key === 'pickup_card_last_four') return last4(form);
   if (key === 'vehicle_model_year') return vehicleModelYear(form);
   if (key === 'vehicle_year_make') return vehicleYearMake(form);
@@ -142,7 +233,20 @@ function tokenValue(form, key) {
     return ['8am-12pm', '12pm-5pm', '5pm-9pm'].map(slot => `${chosen === slot ? '☑' : '☐'} ${slot}`).join('   ');
   }
   const amount = key.match(/^pickup_amount_(\d+)_money$/);
-  if (amount) return moneyValue(form, `pickup_amount_${amount[1]}`);
+  if (amount) {
+    const row = pickupScheduleDetails(form).rows[Number(amount[1]) - 1];
+    return raw(form, `pickup_amount_${amount[1]}`) ? moneyValue(form, `pickup_amount_${amount[1]}`) : row ? moneyFromNumber(row.payment) : '';
+  }
+  const dueDate = key.match(/^pickup_date_(\d+)$/);
+  if (dueDate) {
+    const row = pickupScheduleDetails(form).rows[Number(dueDate[1]) - 1];
+    return raw(form, key) || (row?.date ? formatDate(row.date) : '');
+  }
+  const scheduleValue = key.match(/^pickup_(interest|principal|balance)_(\d+)_money$/);
+  if (scheduleValue) {
+    const row = pickupScheduleDetails(form).rows[Number(scheduleValue[2]) - 1];
+    return row ? moneyFromNumber(row[scheduleValue[1]]) : '';
+  }
   return raw(form, key);
 }
 
@@ -169,6 +273,7 @@ function fillText(form, text) {
   const cardholderName = raw(form, 'cardholder_name') || customerName;
   const date = transactionDate(form);
   const dealerCell = /(EASYCAR LLC REP|EASYCAR LLC SIGNATURE|DEALER REPRESENTATIVE|POR EASYCAR LLC)/.test(out);
+  const coBuyerCell = /(CO-BUYER|CO-COMPRADOR)/.test(out);
 
   out = markChoices(form, out);
   out = out.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (_, key) => tokenValue(form, key));
@@ -177,19 +282,25 @@ function fillText(form, text) {
   }
 
   const fields = [
+    ['Borrower / Deudor:', () => customerName],
     ['Customer / Cliente:', () => customerName],
     ['Co-Buyer / Co-Comprador:', () => raw(form, 'co_buyer_name')],
+    ['Address / Direccion:', () => raw(form, 'address')],
     ['Address / Dirección:', () => raw(form, 'address')],
     ['City / State / ZIP:', () => cityStateZip(form)],
+    ['Phone Number / Telefono:', () => raw(form, 'phone')],
     ['Phone Number / Teléfono:', () => raw(form, 'phone')],
     ['Driver License / Licencia:', () => raw(form, 'driver_license')],
+    ['Year, Make, Model / Ano, Marca, Modelo:', () => vehicle(form)],
     ['Year, Make, Model / Año, Marca, Modelo:', () => vehicle(form)],
     ['Year, Make & Model / Vehículo:', () => vehicle(form)],
     ['Vehicle (Year, Make, Model) / Vehículo:', () => vehicle(form)],
     ['VIN:', () => raw(form, 'vin')],
     ['Mileage / Millas:', () => formatMiles(form)],
+    ['Stock Number / Numero de Inventario:', () => raw(form, 'stock_number')],
     ['Stock Number / Número de Inventario:', () => raw(form, 'stock_number')],
     ['Retail Installment Contract No.:', () => raw(form, 'contract_number')],
+    ['Transaction Date / Fecha de la Transaccion:', () => date],
     ['Transaction Date / Fecha de la Transacción:', () => date],
     ['Transaction Date / Fecha:', () => date],
     ['Date / Fecha de la Transacción:', () => date],
@@ -211,8 +322,8 @@ function fillText(form, text) {
     out = out.replace(new RegExp(escaped + '[ \\t]*[_$./\\-][ \\t_$./\\-]*', 'g'), `${label} ${value}`);
   }
 
-  out = out.replace(/Printed Name \/ Nombre Impreso:\s*_{3,}/g, `Printed Name / Nombre Impreso: ${dealerCell ? sellerName : customerName}`);
-  out = out.replace(/Name\/Nombre:\s*_{5,}/g, `Name/Nombre: ${dealerCell ? sellerName : customerName}`);
+  out = out.replace(/Printed Name \/ Nombre Impreso:\s*_{3,}/g, `Printed Name / Nombre Impreso: ${dealerCell ? sellerName : coBuyerCell ? raw(form, 'co_buyer_name') : customerName}`);
+  out = out.replace(/Name\/Nombre:\s*_{5,}/g, `Name/Nombre: ${dealerCell ? sellerName : coBuyerCell ? raw(form, 'co_buyer_name') : customerName}`);
   out = out.replace(/Name:\s*_{5,}/g, `Name: ${sellerName}`);
   out = out.replace(/Cardholder Signature\nFirma del Titular de la Tarjeta/g, `Cardholder Signature\nFirma del Titular de la Tarjeta\nName/Nombre: ${cardholderName}`);
   out = out.replace(/Borrower Signature \(If different\)\nFirma del Deudor \(Si es distinto\)/g, `Borrower Signature (If different)\nFirma del Deudor (Si es distinto)\nName/Nombre: ${customerName}`);
@@ -298,7 +409,7 @@ function renderSignatureTable(form, rows, doc) {
 function renderTable(form, rows, doc, forceSignature = false) {
   const joined = rows.flat().join(' ');
   const compactEnough = joined.length < 1000 && rows.length <= 4;
-  const signatureLike = forceSignature || (compactEnough && /(CUSTOMER|CLIENTE|BUYER|COMPRADOR|CARDHOLDER|BORROWER|DEUDOR|EASYCAR|DEALER|REP)/i.test(joined) && /(SIGNATURE|FIRMA|X _)/i.test(joined));
+  const signatureLike = forceSignature || (compactEnough && /(CUSTOMER|CLIENTE|BUYER|COMPRADOR|CARDHOLDER|BORROWER|DEUDOR|EASYCAR|DEALER|REP)/i.test(joined) && /(\bSIGNATURE\b|\bFIRMA(?:S)?\b|X _)/i.test(joined));
   if (signatureLike) return renderSignatureTable(form, rows, doc);
 
   const isPaymentSchedule = rows[0]?.[0] === '#';
