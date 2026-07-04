@@ -40,9 +40,14 @@
     .full { grid-column: 1 / -1; }
     .name-grid { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 16px; }
     .address-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
-    .address-suggestions { display: none; grid-column: 1 / -1; gap: 6px; margin-top: 8px; }
+    .address-suggestions { display: none; grid-column: 1 / -1; gap: 6px; margin-top: 8px; max-height: 220px; overflow: auto; }
     .address-suggestions.visible { display: grid; }
     .address-suggestion { min-height: 36px; padding: 8px 10px; border-radius: 5px; background: #fff; color: var(--dark); border: 1px solid var(--line); text-align: left; font-weight: 700; }
+    .address-suggestion small { display: block; margin-top: 2px; color: var(--muted); font-weight: 600; }
+    .down-summary { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: #f7fbff; }
+    .down-stat { display: grid; gap: 2px; }
+    .down-stat span { font-size: .72rem; color: var(--muted); font-weight: 800; text-transform: uppercase; }
+    .down-stat strong { font-size: 1rem; color: var(--blue); }
     label { display: grid; gap: 6px; color: #2f3b51; font-size: .82rem; font-weight: 700; text-transform: uppercase; }
     input, select, textarea { width: 100%; min-height: 42px; border: 1px solid #bac5d6; border-radius: 6px; padding: 10px 11px; font: inherit; background: #fffdf3; color: var(--ink); }
     input[readonly] { background: #eef4fb; color: #34445e; }
@@ -112,7 +117,7 @@
       .brand { align-items: flex-start; flex-direction: column; }
       .grid { grid-template-columns: 1fr; }
       .name-grid { grid-template-columns: 1fr; }
-      .address-tools { grid-template-columns: 1fr; }
+      .address-tools, .down-summary { grid-template-columns: 1fr; }
       .toolbar { align-items: stretch; flex-direction: column; }
       .schedule-grid { grid-template-columns: 44px minmax(0, 1fr); align-items: start; }
       .schedule-grid .head { display: none; }
@@ -342,7 +347,14 @@
 
         <div class="section-title">Financiamiento de inicial / Pago diferido</div>
         <label>Monto total del down <input id="pickup_down_total"></label>
-        <label>Monto a financiar <input id="pickup_finance_amount"></label>
+        <label>Pagado hoy al entregar <input id="pickup_down_paid_today"></label>
+        <label>Saldo a financiar <input id="pickup_finance_amount" readonly></label>
+        <label>Porcentaje cobrado <input id="pickup_down_collected_percent" readonly></label>
+        <div class="down-summary">
+          <div class="down-stat"><span>Inicial total</span><strong id="downTotalStat">$0.00</strong></div>
+          <div class="down-stat"><span>Cobrado hoy</span><strong id="downPaidStat">$0.00</strong></div>
+          <div class="down-stat"><span>% para entregar</span><strong id="downPercentStat">0.00%</strong></div>
+        </div>
         <label>Interes anual <select id="pickup_interest_rate"><option value="0" selected>0%</option><option value="5">5%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option><option value="30">30%</option></select></label>
         <label>Fecha primer pago <input id="pickup_start_date" type="date" readonly></label>
         <label>Cantidad de pagos <select id="pickup_payment_count"><option value="1">1 pago</option><option value="2">2 pagos</option><option value="3">3 pagos</option><option value="4">4 pagos</option><option value="5">5 pagos</option><option value="6">6 pagos</option><option value="7">7 pagos</option><option value="8">8 pagos</option><option value="9">9 pagos</option><option value="10" selected>10 pagos</option><option value="11">11 pagos</option><option value="12">12 pagos</option><option value="13">13 pagos</option><option value="14">14 pagos</option></select></label>
@@ -395,6 +407,17 @@
         pickupSchedule.rows.push([String(i), `{{pickup_date_${i}}}`, `{{pickup_amount_${i}_money}}`, `{{pickup_interest_${i}_money}}`, `{{pickup_principal_${i}_money}}`, `{{pickup_balance_${i}_money}}`]);
       }
     }
+    const pickupTerms = pickupDocument?.blocks.find((block, index, blocks) => block.type === 'table' && blocks[index - 1]?.text === '1. FINANCING TERMS / TERMINOS DEL FINANCIAMIENTO');
+    if (pickupTerms) {
+      pickupTerms.rows = [
+        ['Down Payment Total / Monto total del down: {{pickup_down_total_money}}', 'Paid Today at Delivery / Pagado hoy al entregar: {{pickup_down_paid_today_money}}'],
+        ['Principal Amount Financed / Saldo a financiar: {{pickup_finance_money}}', 'Down Collected / Porcentaje cobrado: {{pickup_down_collected_percent}}'],
+        ['Annual Interest Rate / Interes anual: {{pickup_interest_rate_percent}}', 'Finance Charge / Cargo financiero: {{pickup_finance_charge_money}}'],
+        ['Total of Payments / Total de pagos: {{pickup_total_payments_money}}', 'Term / Plazo: {{pickup_payment_count}} payments / pagos'],
+        ['Issue Date / Fecha de emision: {{transaction_date_display}}', 'First Payment Date / Primera fecha de pago: {{pickup_start_date_display}}'],
+        ['Frequency / Frecuencia: [   ] Weekly / Semanal       [   ] Bi-Weekly / Bi-semanal       [   ] Monthly / Mensual', 'Card Surcharge / Cargo tarjeta: 1.8% when paid by debit or credit card / cuando se pague con tarjeta']
+      ];
+    }
     const DOC_TITLES = {
       gps: 'GPS Disclosure',
       fee: 'GPS Fee Notice',
@@ -427,7 +450,7 @@
       'vin','vehicle_year','vehicle_make','vehicle_model','vehicle_mileage','stock_number','contract_number','transaction_date','sales_rep_name','gps_status','vehicle_history_decision',
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
       'conditional_delivery_date','conditional_deadline',
-      'pickup_down_total','pickup_finance_amount','pickup_interest_rate','pickup_start_date','pickup_payment_count','pickup_frequency','pickup_finance_charge','pickup_total_payments',
+      'pickup_down_total','pickup_down_paid_today','pickup_finance_amount','pickup_down_collected_percent','pickup_interest_rate','pickup_start_date','pickup_payment_count','pickup_frequency','pickup_finance_charge','pickup_total_payments',
       ...pickupIds
     ];
     const $ = id => document.getElementById(id);
@@ -567,6 +590,17 @@
       if (frequency === 'Monthly') return addMonths(start, index - 1);
       return new Date(start.getFullYear(), start.getMonth(), start.getDate() + ((index - 1) * 7));
     }
+    function syncDownPaymentSummary() {
+      const total = parseMoney('pickup_down_total');
+      const paid = Math.min(total || parseMoney('pickup_down_paid_today'), parseMoney('pickup_down_paid_today'));
+      const financed = Math.max(0, total - paid);
+      const percent = total > 0 ? (paid / total) * 100 : 0;
+      if ($('pickup_finance_amount')) $('pickup_finance_amount').value = total || paid ? financed.toFixed(2) : '';
+      if ($('pickup_down_collected_percent')) $('pickup_down_collected_percent').value = total ? `${percent.toFixed(2)}%` : '';
+      if ($('downTotalStat')) $('downTotalStat').textContent = moneyFromNumber(total);
+      if ($('downPaidStat')) $('downPaidStat').textContent = moneyFromNumber(paid);
+      if ($('downPercentStat')) $('downPercentStat').textContent = `${percent.toFixed(2)}%`;
+    }
     function pickupScheduleDetails() {
       const amount = parseMoney('pickup_finance_amount');
       const start = parseStartDate();
@@ -604,6 +638,7 @@
     }
     function calculatePickupSchedule() {
       ensureDefaultDates();
+      syncDownPaymentSummary();
       const paymentCount = Math.min(14, Math.max(1, Number(val('pickup_payment_count')) || 10));
       const schedule = pickupScheduleDetails();
       updatePaymentRows(paymentCount);
@@ -629,6 +664,8 @@
     }
     function tokenValue(key) {
       if (key === 'pickup_down_total_money') return moneyValue('pickup_down_total');
+      if (key === 'pickup_down_paid_today_money') return moneyValue('pickup_down_paid_today');
+      if (key === 'pickup_down_collected_percent') return val('pickup_down_collected_percent');
       if (key === 'pickup_finance_money') return moneyValue('pickup_finance_amount');
       if (key === 'pickup_interest_rate_percent') return `${Math.min(30, Math.max(0, Number(val('pickup_interest_rate')) || 0)).toFixed(2)}%`;
       if (key === 'pickup_finance_charge_money') return moneyValue('pickup_finance_charge');
@@ -876,6 +913,8 @@
       }
     }
     let addressDetectTimer = null;
+    let addressRequest = null;
+    let lastAddressQuery = '';
     function addressLineFromResult(result) {
       const address = result?.address || {};
       return [address.house_number, address.road || address.pedestrian || address.neighbourhood].filter(Boolean).join(' ') || result?.display_name?.split(',')[0] || val('address');
@@ -895,12 +934,14 @@
       box.replaceChildren();
       box.classList.toggle('visible', Boolean(results?.length));
       (results || []).forEach(result => {
+        const address = result.address || {};
+        const line = addressLineFromResult(result);
+        const detail = [cityFromResult(result), stateFromResult(result), address.postcode].filter(Boolean).join(', ');
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'address-suggestion';
-        button.textContent = result.display_name;
+        button.innerHTML = `${esc(line)}${detail ? `<small>${esc(detail)}</small>` : ''}`;
         button.addEventListener('click', () => {
-          const address = result.address || {};
           $('address').value = addressLineFromResult(result);
           $('city').value = cityFromResult(result);
           $('state').value = stateFromResult(result);
@@ -915,17 +956,21 @@
     }
     async function detectAddress() {
       const query = val('address');
-      if (query.length < 6) {
-        $('addressStatus').textContent = 'Escribe o pega una direccion mas completa.';
+      if (query.length < 5) {
+        $('addressStatus').textContent = 'Escribe al menos numero y calle para ver opciones.';
         $('addressStatus').className = 'status warn';
         renderAddressSuggestions([]);
         return;
       }
+      if (query === lastAddressQuery && $('addressSuggestions')?.classList.contains('visible')) return;
+      lastAddressQuery = query;
+      if (addressRequest) addressRequest.abort();
+      addressRequest = new AbortController();
       $('addressStatus').textContent = 'Buscando direccion...';
       $('addressStatus').className = 'status';
       try {
-        const params = new URLSearchParams({ format: 'jsonv2', addressdetails: '1', limit: '5', countrycodes: 'us', q: query });
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
+        const params = new URLSearchParams({ format: 'jsonv2', addressdetails: '1', limit: '7', countrycodes: 'us', q: query });
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, { signal: addressRequest.signal });
         if (!response.ok) throw new Error('No se pudo consultar direccion');
         const results = await response.json();
         if (!results.length) {
@@ -938,17 +983,21 @@
         $('addressStatus').className = 'status good';
         renderAddressSuggestions(results);
       } catch (error) {
+        if (error.name === 'AbortError') return;
         $('addressStatus').textContent = 'No se pudo detectar la direccion. Puedes completarla manualmente.';
         $('addressStatus').className = 'status warn';
       }
     }
     function scheduleAddressDetect() {
       clearTimeout(addressDetectTimer);
-      if (val('address').length < 12) return;
-      addressDetectTimer = setTimeout(detectAddress, 900);
+      renderAddressSuggestions([]);
+      if (val('address').length < 5) return;
+      addressDetectTimer = setTimeout(detectAddress, 450);
     }
     function collectFormData() {
       ensureDefaultDates();
+      calculateConditionalDeadline();
+      calculatePickupSchedule();
       return ids.reduce((data, id) => {
         data[id] = val(id);
         return data;

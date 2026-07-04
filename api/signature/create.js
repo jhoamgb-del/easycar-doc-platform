@@ -16,6 +16,13 @@ function customerName(form) {
   return [form.first_name, form.middle_name, form.last_name, form.second_last_name].filter(Boolean).join(' ');
 }
 
+function normalizedPhone(form) {
+  const digits = String(form.phone || form.alternate_phone || '').replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return '';
+}
+
 function saleRecord(formData, ownerId) {
   const vehicle = [formData.vehicle_year, formData.vehicle_make, formData.vehicle_model].filter(Boolean).join(' ');
   return {
@@ -73,6 +80,20 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
   const config = docusealConfig();
   const html = renderDocusealHtml(form);
   const saleType = form.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
+  const phone = normalizedPhone(form);
+  const customerSubmitter = {
+    role: config.customerRole,
+    email,
+    name,
+    external_id: sale.id,
+    reply_to: config.replyTo,
+    require_email_2fa: true
+  };
+  if (phone) {
+    customerSubmitter.phone = phone;
+    customerSubmitter.send_sms = true;
+    customerSubmitter.require_phone_2fa = true;
+  }
   const response = await fetch(`${config.apiUrl}/submissions/html`, {
     method: 'POST',
     headers: {
@@ -92,14 +113,8 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
         html_footer: renderDocusealFooter(),
         size: 'Letter'
       }],
-      submitters: [{
-        role: config.customerRole,
-        email,
-        name,
-        external_id: sale.id,
-        reply_to: config.replyTo,
-        require_email_2fa: true,
-      }],
+      send_sms: Boolean(phone),
+      submitters: [customerSubmitter],
       message: {
         subject: `EasyCar - ${saleType} documents ready for your signature`,
         body: 'Your EasyCar documents are ready. Review every page and sign securely here: {{submitter.link}}\n\nIf you have questions, reply to this email or contact sales@easycarus.com.'

@@ -43,6 +43,17 @@ if (pickupSchedule && pickupSchedule.rows.length < 15) {
     pickupSchedule.rows.push([String(i), `{{pickup_date_${i}}}`, `{{pickup_amount_${i}_money}}`, `{{pickup_interest_${i}_money}}`, `{{pickup_principal_${i}_money}}`, `{{pickup_balance_${i}_money}}`]);
   }
 }
+const pickupTerms = pickupDocument?.blocks.find((block, index, blocks) => block.type === 'table' && blocks[index - 1]?.text === '1. FINANCING TERMS / TERMINOS DEL FINANCIAMIENTO');
+if (pickupTerms) {
+  pickupTerms.rows = [
+    ['Down Payment Total / Monto total del down: {{pickup_down_total_money}}', 'Paid Today at Delivery / Pagado hoy al entregar: {{pickup_down_paid_today_money}}'],
+    ['Principal Amount Financed / Saldo a financiar: {{pickup_finance_money}}', 'Down Collected / Porcentaje cobrado: {{pickup_down_collected_percent}}'],
+    ['Annual Interest Rate / Interes anual: {{pickup_interest_rate_percent}}', 'Finance Charge / Cargo financiero: {{pickup_finance_charge_money}}'],
+    ['Total of Payments / Total de pagos: {{pickup_total_payments_money}}', 'Term / Plazo: {{pickup_payment_count}} payments / pagos'],
+    ['Issue Date / Fecha de emision: {{transaction_date_display}}', 'First Payment Date / Primera fecha de pago: {{pickup_start_date_display}}'],
+    ['Frequency / Frecuencia: [   ] Weekly / Semanal       [   ] Bi-Weekly / Bi-semanal       [   ] Monthly / Mensual', 'Card Surcharge / Cargo tarjeta: 1.8% when paid by debit or credit card / cuando se pague con tarjeta']
+  ];
+}
 
 function esc(text) {
   return String(text || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[ch]));
@@ -97,6 +108,19 @@ function parseMoney(form, id) {
 
 function moneyFromNumber(amount) {
   return '$' + (Number(amount) || 0).toFixed(2);
+}
+
+function downCollectedPercent(form) {
+  const total = parseMoney(form, 'pickup_down_total');
+  const paid = Math.min(total || parseMoney(form, 'pickup_down_paid_today'), parseMoney(form, 'pickup_down_paid_today'));
+  return total > 0 ? `${((paid / total) * 100).toFixed(2)}%` : '';
+}
+
+function pickupFinanceAmount(form) {
+  const total = parseMoney(form, 'pickup_down_total');
+  const paid = Math.min(total || parseMoney(form, 'pickup_down_paid_today'), parseMoney(form, 'pickup_down_paid_today'));
+  const calculated = Math.max(0, total - paid);
+  return calculated || parseMoney(form, 'pickup_finance_amount');
 }
 
 function monthValue(form, id) {
@@ -178,7 +202,7 @@ function pickupDueDate(form, start, index) {
 }
 
 function pickupScheduleDetails(form) {
-  const amount = parseMoney(form, 'pickup_finance_amount');
+  const amount = pickupFinanceAmount(form);
   const paymentCount = Math.min(14, Math.max(1, Number(raw(form, 'pickup_payment_count')) || 10));
   const rate = pickupPeriodicRate(form);
   const start = pickupStartDate(form);
@@ -215,7 +239,9 @@ function pickupScheduleDetails(form) {
 
 function tokenValue(form, key) {
   if (key === 'pickup_down_total_money') return moneyValue(form, 'pickup_down_total');
-  if (key === 'pickup_finance_money') return moneyValue(form, 'pickup_finance_amount');
+  if (key === 'pickup_down_paid_today_money') return moneyValue(form, 'pickup_down_paid_today');
+  if (key === 'pickup_down_collected_percent') return raw(form, 'pickup_down_collected_percent') || downCollectedPercent(form);
+  if (key === 'pickup_finance_money') return moneyFromNumber(pickupFinanceAmount(form));
   if (key === 'pickup_interest_rate_percent') return `${Math.min(30, Math.max(0, Number(raw(form, 'pickup_interest_rate')) || 0)).toFixed(2)}%`;
   if (key === 'pickup_finance_charge_money') return raw(form, 'pickup_finance_charge') ? moneyValue(form, 'pickup_finance_charge') : moneyFromNumber(pickupScheduleDetails(form).financeCharge);
   if (key === 'pickup_total_payments_money') return raw(form, 'pickup_total_payments') ? moneyValue(form, 'pickup_total_payments') : moneyFromNumber(pickupScheduleDetails(form).totalPayments);
@@ -370,7 +396,7 @@ function tableClass(rows) {
 }
 
 function signatureField(name, required = true) {
-  return `<signature-field name="${esc(name)}" role="Customer" required="${required ? 'true' : 'false'}" format="drawn_or_typed" style="width: 180px; height: 34px; display: inline-block;"></signature-field>`;
+  return `<signature-field name="${esc(name)}" role="Customer" required="${required ? 'true' : 'false'}" format="typed" style="width: 180px; height: 34px; display: inline-block;"></signature-field>`;
 }
 
 function signatureLabel(label) {
