@@ -11,12 +11,20 @@ function parseOriginalDocs() {
   return JSON.parse(match[1]);
 }
 
+function parseVoluntaryDocs() {
+  const match = appHtml.match(/const VOLUNTARY_DOCS = (\[[\s\S]*?\]);\s*const pickupSchedule/);
+  if (!match) throw new Error('Unable to load EasyCar voluntary package');
+  return Function(`"use strict"; return (${match[1]});`)();
+}
+
 function logoSrc() {
   const match = appHtml.match(/<img src="([^"]+)" alt="EasyCar">/);
   return match ? match[1] : '';
 }
 
 const ORIGINAL_DOCS = parseOriginalDocs();
+const VOLUNTARY_DOCS = parseVoluntaryDocs();
+const ALL_DOCS = [...ORIGINAL_DOCS, ...VOLUNTARY_DOCS];
 const LOGO_SRC = logoSrc();
 const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO';
 const DOC_TITLES = {
@@ -29,11 +37,14 @@ const DOC_TITLES = {
   pickup: 'Initial Financing Agreement',
   conditional: 'Conditional Delivery',
   communication: 'Communication Authorization',
-  creditapp: 'Credit Application'
+  creditapp: 'Credit Application',
+  voluntary_notice: 'Repo Voluntary Agreement',
+  voluntary_condition: 'Vehicle Condition & Photos'
 };
 const DOC_SETS = {
   BHPH: ORIGINAL_DOCS.map(doc => doc.key),
-  BANCO: ['pickup', 'card']
+  BANCO: ['pickup', 'card'],
+  VOLUNTARY: ['voluntary_notice', 'voluntary_condition']
 };
 
 const pickupDocument = ORIGINAL_DOCS.find(doc => doc.key === 'pickup');
@@ -134,12 +145,12 @@ function raw(form, id) {
 }
 
 function saleType(form) {
-  return raw(form, 'sale_type') === 'BANCO' ? 'BANCO' : 'BHPH';
+  return raw(form, 'sale_type') === 'VOLUNTARY' ? 'VOLUNTARY' : raw(form, 'sale_type') === 'BANCO' ? 'BANCO' : 'BHPH';
 }
 
 function selectedDocs(form) {
   const order = DOC_SETS[saleType(form)] || DOC_SETS.BHPH;
-  return order.map(key => ORIGINAL_DOCS.find(doc => doc.key === key)).filter(Boolean);
+  return order.map(key => ALL_DOCS.find(doc => doc.key === key)).filter(Boolean);
 }
 
 function fullName(form) {
@@ -322,6 +333,15 @@ function tokenValue(form, key) {
   if (key === 'vehicle_year_make') return vehicleYearMake(form);
   if (key === 'vehicle_mileage_display') return formatMiles(form);
   if (key === 'transaction_date_display') return transactionDate(form);
+  if (key === 'full_name') return fullName(form);
+  if (key === 'surrender_date_display') return formatDate(parseDate(raw(form, 'surrender_date'))) || transactionDate(form);
+  if (key === 'surrender_sale_date_display') {
+    const base = parseDate(raw(form, 'surrender_date')) || parseDate(raw(form, 'transaction_date')) || new Date();
+    return formatDate(addDays(base, 10));
+  }
+  if (key === 'surrender_payoff_money') return moneyValue(form, 'surrender_payoff');
+  if (key === 'surrender_past_due_money') return moneyValue(form, 'surrender_past_due');
+  if (key === 'surrender_total_money') return moneyValue(form, 'surrender_total');
   if (key === 'conditional_delivery_date_display') return formatDate(parseDate(raw(form, 'conditional_delivery_date'))) || transactionDate(form);
   if (key === 'conditional_deadline_display') return raw(form, 'conditional_deadline') || conditionalDeadline(form);
   if (key === 'call_hours_en' || key === 'call_hours_es') {

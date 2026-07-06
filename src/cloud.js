@@ -101,6 +101,7 @@ function markField(id, invalid) {
 }
 
 function validateForSignature(formData) {
+  const isVoluntary = formData.sale_type === 'VOLUNTARY';
   const required = [
     ['first_name', 'Nombre del cliente'],
     ['last_name', 'Apellido del cliente'],
@@ -113,13 +114,23 @@ function validateForSignature(formData) {
     ['vehicle_model', 'Modelo del vehiculo'],
     ['vehicle_mileage', 'Millas del vehiculo'],
     ['transaction_date', 'Fecha de venta'],
-    ['sales_rep_name', 'Nombre del vendedor'],
+    ['sales_rep_name', 'Nombre del vendedor']
+  ];
+  const paymentRequired = [
     ['pickup_down_total', 'Monto total de la inicial'],
     ['pickup_start_date', 'Fecha del primer pago'],
     ['pickup_payment_count', 'Tiempo/cantidad de pagos'],
     ['pickup_frequency', 'Frecuencia de pago'],
     ['pickup_interest_rate', 'Interes anual']
   ];
+  const voluntaryRequired = [
+    ['surrender_date', 'Fecha de entrega voluntaria'],
+    ['surrender_location', 'Lugar de entrega voluntaria'],
+    ['account_number', 'Numero de cuenta'],
+    ['surrender_payoff', 'Payoff estimado'],
+    ['surrender_total', 'Total preliminar']
+  ];
+  required.push(...(isVoluntary ? voluntaryRequired : paymentRequired));
   const missing = [];
   const invalidIds = new Set();
   for (const [id, label] of required) {
@@ -136,17 +147,17 @@ function validateForSignature(formData) {
     missing.push('Telefono valido para recibir SMS');
     invalidIds.add('phone');
   }
-  if (moneyNumber(formData.pickup_down_total) <= 0) {
+  if (!isVoluntary && moneyNumber(formData.pickup_down_total) <= 0) {
     missing.push('Monto total de la inicial mayor que $0');
     invalidIds.add('pickup_down_total');
   }
   const paymentCount = Number(formData.pickup_payment_count);
-  if (!Number.isFinite(paymentCount) || paymentCount < 1 || paymentCount > 14) {
+  if (!isVoluntary && (!Number.isFinite(paymentCount) || paymentCount < 1 || paymentCount > 14)) {
     missing.push('Cantidad de pagos entre 1 y 14');
     invalidIds.add('pickup_payment_count');
   }
   const interest = Number(formData.pickup_interest_rate);
-  if (!Number.isFinite(interest) || interest < 0 || interest > 30) {
+  if (!isVoluntary && (!Number.isFinite(interest) || interest < 0 || interest > 30)) {
     missing.push('Interes anual entre 0% y 30%');
     invalidIds.add('pickup_interest_rate');
   }
@@ -235,7 +246,7 @@ async function sendForSignature() {
   }
   const sale = session?.access_token ? await saveSale(formData) : null;
 
-  const saleType = formData.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
+  const saleType = formData.sale_type === 'VOLUNTARY' ? 'REPO VOLUNTARY' : formData.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
   const approved = window.confirm(`Se enviaran los documentos ${saleType} al email ${formData.customer_email}. El codigo obligatorio de firma llegara por SMS al telefono ${formData.phone}. ¿Continuar?`);
   if (!approved) return;
 
