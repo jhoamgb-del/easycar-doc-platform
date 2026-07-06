@@ -29,12 +29,13 @@
     .toolbar p { margin: 0; color: var(--muted); line-height: 1.4; }
     .deal-mode { display: grid; gap: 10px; margin: 0 0 18px; padding: 14px; border: 1px solid #c7d4e5; border-radius: 8px; background: #f8fbff; }
     .deal-mode strong { color: var(--dark); font-size: .92rem; }
-    .mode-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .mode-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
     .mode-tab { display: grid; gap: 5px; min-height: 74px; padding: 11px 12px; border: 2px solid #c7d4e5; border-radius: 7px; background: #fff; color: var(--dark); cursor: pointer; }
     .mode-tab input { position: absolute; opacity: 0; pointer-events: none; }
     .mode-tab span { font-weight: 900; letter-spacing: .05em; }
     .mode-tab small { color: var(--muted); font-size: .76rem; line-height: 1.25; text-transform: none; }
     .mode-tab:has(input:checked) { border-color: var(--blue); background: #eaf3ff; box-shadow: inset 0 0 0 1px rgba(21,85,166,.18); }
+    .mode-tab.disabled { opacity: .62; cursor: not-allowed; }
     .mode-summary { margin: 0; color: #34445e; font-size: .86rem; line-height: 1.35; }
     .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 16px; }
     .full { grid-column: 1 / -1; }
@@ -49,6 +50,11 @@
     .down-summary label:last-child { border-right: 0; }
     .down-summary input { min-height: 36px; border-color: transparent; background: #fff; font-size: 1rem; font-weight: 800; color: var(--dark); }
     .down-summary input[readonly] { background: #edf5ff; color: var(--blue); }
+    .photo-grid { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .photo-slot { min-height: 118px; border: 1.5px dashed #9fb3ce; border-radius: 7px; padding: 10px; background: #f8fbff; }
+    .photo-slot input { background: #fff; font-size: .82rem; }
+    body:not([data-sale-type="VOLUNTARY"]) .voluntary-only { display: none !important; }
+    body[data-sale-type="VOLUNTARY"] .not-voluntary { display: none !important; }
     label { display: grid; gap: 6px; color: #2f3b51; font-size: .82rem; font-weight: 700; text-transform: uppercase; }
     input, select, textarea { width: 100%; min-height: 42px; border: 1px solid #bac5d6; border-radius: 6px; padding: 10px 11px; font: inherit; background: #fffdf3; color: var(--ink); }
     input.field-error, select.field-error, textarea.field-error { border-color: var(--red); background: #fff1f3; box-shadow: 0 0 0 2px rgba(237,28,46,.12); }
@@ -298,8 +304,13 @@
           </label>
           <label class="mode-tab">
             <input type="radio" name="sale_type_choice" id="sale_type_voluntary" value="VOLUNTARY">
-            <span>REPO VOLUNTARY</span>
-            <small>Entrega voluntaria bilingue con aviso legal y condicion del vehiculo.</small>
+            <span>ENTREGA VOLUNTARIA</span>
+            <small>Devolucion voluntaria, cuenta, payoff, cuotas y fotos.</small>
+          </label>
+          <label class="mode-tab disabled">
+            <input type="radio" name="sale_type_choice" id="sale_type_newdoc" value="NEWDOC" disabled>
+            <span>NUEVO DOCUMENTO</span>
+            <small>Reservado para el proximo formato.</small>
           </label>
         </div>
         <input type="hidden" id="sale_type" value="BHPH">
@@ -348,51 +359,60 @@
 
         <div class="section-title">Venta y pago</div>
         <label>Vendedor <input id="sales_rep_name"></label>
-        <label>GPS <select id="gps_status"><option value=""></option><option>Confirmado</option><option>No confirmado</option></select></label>
-        <label>Vehicle History / CARFAX <select id="vehicle_history_decision"><option value=""></option><option value="reviewed">Cliente reviso reporte disponible</option><option value="declined">Cliente rechazo revisar reporte</option><option value="request">Cliente puede solicitar reporte en 5 dias</option></select></label>
-        <label>Horario llamadas <select id="preferred_call_hours"><option value=""></option><option value="8am-12pm">8am-12pm</option><option value="12pm-5pm">12pm-5pm</option><option value="5pm-9pm">5pm-9pm</option></select></label>
-        <label>Banco <input id="bank_name"></label>
-        <label>Monto autorizado <input id="authorized_amount"></label>
-        <label>Nombre en tarjeta <input id="cardholder_name"></label>
-        <label>Ultimos 4 digitos <input id="card_last_four"></label>
-        <label>Vencimiento MM/YY <input id="card_expiration" type="month"></label>
-        <label>ZIP facturacion <input id="billing_zip"></label>
-        <label class="full">Condiciones / notas <textarea id="price_payment_terms"></textarea></label>
+        <label class="not-voluntary">GPS <select id="gps_status"><option value=""></option><option>Confirmado</option><option>No confirmado</option></select></label>
+        <label class="not-voluntary">Vehicle History / CARFAX <select id="vehicle_history_decision"><option value=""></option><option value="reviewed">Cliente reviso reporte disponible</option><option value="declined">Cliente rechazo revisar reporte</option><option value="request">Cliente puede solicitar reporte en 5 dias</option></select></label>
+        <label class="not-voluntary">Horario llamadas <select id="preferred_call_hours"><option value=""></option><option value="8am-12pm">8am-12pm</option><option value="12pm-5pm">12pm-5pm</option><option value="5pm-9pm">5pm-9pm</option></select></label>
+        <label class="not-voluntary">Banco <input id="bank_name"></label>
+        <label class="not-voluntary">Monto autorizado <input id="authorized_amount"></label>
+        <label class="not-voluntary">Nombre en tarjeta <input id="cardholder_name"></label>
+        <label class="not-voluntary">Ultimos 4 digitos <input id="card_last_four"></label>
+        <label class="not-voluntary">Vencimiento MM/YY <input id="card_expiration" type="month"></label>
+        <label class="not-voluntary">ZIP facturacion <input id="billing_zip"></label>
+        <label class="full not-voluntary">Condiciones / notas <textarea id="price_payment_terms"></textarea></label>
 
-        <div class="section-title">Entrega condicional</div>
-        <label>Fecha de entrega <input id="conditional_delivery_date" type="date" readonly></label>
-        <label>Fecha limite 10 dias <input id="conditional_deadline" readonly></label>
+        <div class="section-title not-voluntary">Entrega condicional</div>
+        <label class="not-voluntary">Fecha de entrega <input id="conditional_delivery_date" type="date" readonly></label>
+        <label class="not-voluntary">Fecha limite 10 dias <input id="conditional_deadline" readonly></label>
 
-        <div class="section-title">Repo Voluntary / Entrega voluntaria</div>
-        <label>Fecha entrega voluntaria <input id="surrender_date" type="date" readonly></label>
-        <label>Hora entrega <input id="surrender_time" type="time"></label>
-        <label>Lugar entrega <input id="surrender_location" value="EASYCAR LLC Facility"></label>
-        <label>Cuenta / Account <input id="account_number"></label>
-        <label>Payoff estimado <input id="surrender_payoff"></label>
-        <label>Cuotas y cargos vencidos <input id="surrender_past_due"></label>
-        <label>Total preliminar <input id="surrender_total"></label>
-        <label>Llaves <select id="surrender_keys"><option value="Yes">Yes / Si</option><option value="No">No</option></select></label>
-        <label>Titulo <select id="surrender_title"><option value=""></option><option value="Yes">Yes / Si</option><option value="No">No</option></select></label>
-        <label>Registro <select id="surrender_registration"><option value=""></option><option value="Yes">Yes / Si</option><option value="No">No</option></select></label>
-        <label>Condicion exterior <select id="surrender_exterior"><option value="No Visible Damage">No visible damage / Sin dano visible</option><option>Scratches</option><option>Dents / Golpes</option><option>Glass / Vidrio</option><option>Lights / Luces</option></select></label>
-        <label>Estado mecanico <select id="surrender_mechanical"><option value="Starts">Starts / Enciende</option><option>Does Not Start / No enciende</option><option>Check Engine Light</option><option>Transmission Noise</option></select></label>
-        <label class="full">Propiedad personal / notas <textarea id="surrender_personal_property"></textarea></label>
-        <label class="full">Fotos requeridas <textarea id="surrender_photo_notes" readonly>Frente, trasera, lado derecho, lado izquierdo, interior, odometro, VIN plate, danos visibles.</textarea></label>
+        <div class="section-title voluntary-only">Entrega voluntaria</div>
+        <label class="voluntary-only">Fecha entrega voluntaria <input id="surrender_date" type="date" readonly></label>
+        <label class="voluntary-only">Hora entrega <input id="surrender_time" type="time"></label>
+        <label class="voluntary-only">Lugar entrega <input id="surrender_location" value="EASYCAR LLC Facility"></label>
+        <label class="voluntary-only">Cuenta / Account <input id="account_number"></label>
+        <label class="voluntary-only">Cuota mensual <input id="surrender_monthly_payment"></label>
+        <label class="voluntary-only">Cuotas pagadas <input id="surrender_paid_installments" type="number" min="0"></label>
+        <label class="voluntary-only">Cuotas que debe <input id="surrender_owed_installments" type="number" min="0"></label>
+        <label class="voluntary-only">Cantidad que debe <input id="surrender_amount_owed" readonly></label>
+        <label class="voluntary-only">Payoff del carro <input id="surrender_payoff"></label>
+        <label class="voluntary-only">Dias vendido <input id="surrender_days_sold" readonly></label>
+        <label class="voluntary-only">Llaves <select id="surrender_keys"><option value="Yes">Yes / Si</option><option value="No">No</option></select></label>
+        <label class="voluntary-only">Titulo <select id="surrender_title"><option value=""></option><option value="Yes">Yes / Si</option><option value="No">No</option></select></label>
+        <label class="voluntary-only">Registro <select id="surrender_registration"><option value=""></option><option value="Yes">Yes / Si</option><option value="No">No</option></select></label>
+        <label class="voluntary-only">Condicion exterior <select id="surrender_exterior"><option value="No Visible Damage">No visible damage / Sin dano visible</option><option>Scratches</option><option>Dents / Golpes</option><option>Glass / Vidrio</option><option>Lights / Luces</option></select></label>
+        <label class="voluntary-only">Estado mecanico <select id="surrender_mechanical"><option value="Starts">Starts / Enciende</option><option>Does Not Start / No enciende</option><option>Check Engine Light</option><option>Transmission Noise</option></select></label>
+        <label class="full voluntary-only">Propiedad personal / notas <textarea id="surrender_personal_property"></textarea></label>
+        <div class="photo-grid voluntary-only">
+          <label class="photo-slot">Foto 1 - Frente <input id="surrender_photo_1" type="file" accept="image/*" capture="environment"></label>
+          <label class="photo-slot">Foto 2 - Trasera <input id="surrender_photo_2" type="file" accept="image/*" capture="environment"></label>
+          <label class="photo-slot">Foto 3 - Lado / interior <input id="surrender_photo_3" type="file" accept="image/*" capture="environment"></label>
+          <label class="photo-slot">Foto 4 - Odometro / VIN / dano <input id="surrender_photo_4" type="file" accept="image/*" capture="environment"></label>
+        </div>
+        <label class="full voluntary-only">Notas de fotos / reparacion <textarea id="surrender_photo_notes">No se conoce todavia si existen costos de reparacion, inspeccion, limpieza, grua, almacenamiento u otros cargos hasta revisar fisicamente el vehiculo.</textarea></label>
 
-        <div class="section-title">Financiamiento de inicial / Pago diferido</div>
-        <div class="down-summary">
+        <div class="section-title not-voluntary">Financiamiento de inicial / Pago diferido</div>
+        <div class="down-summary not-voluntary">
           <label>Inicial total <input id="pickup_down_total"></label>
           <label>Pagado hoy <input id="pickup_down_paid_today"></label>
           <label>Saldo a financiar <input id="pickup_finance_amount" readonly></label>
           <label>% cobrado <input id="pickup_down_collected_percent" readonly></label>
         </div>
-        <label>Interes anual <select id="pickup_interest_rate"><option value="0" selected>0%</option><option value="5">5%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option><option value="30">30%</option></select></label>
-        <label>Fecha primer pago <input id="pickup_start_date" type="date" readonly></label>
-        <label>Cantidad de pagos <select id="pickup_payment_count"><option value="1">1 pago</option><option value="2">2 pagos</option><option value="3">3 pagos</option><option value="4">4 pagos</option><option value="5">5 pagos</option><option value="6">6 pagos</option><option value="7">7 pagos</option><option value="8">8 pagos</option><option value="9">9 pagos</option><option value="10" selected>10 pagos</option><option value="11">11 pagos</option><option value="12">12 pagos</option><option value="13">13 pagos</option><option value="14">14 pagos</option></select></label>
-        <label>Frecuencia <select id="pickup_frequency"><option value="Weekly">Semanal</option><option value="Bi-Weekly">Bi-semanal</option><option value="Monthly">Mensual</option></select></label>
-        <label>Finance charge <input id="pickup_finance_charge" readonly></label>
-        <label>Total de pagos <input id="pickup_total_payments" readonly></label>
-        <div class="schedule-grid">
+        <label class="not-voluntary">Interes anual <select id="pickup_interest_rate"><option value="0" selected>0%</option><option value="5">5%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option><option value="30">30%</option></select></label>
+        <label class="not-voluntary">Fecha primer pago <input id="pickup_start_date" type="date" readonly></label>
+        <label class="not-voluntary">Cantidad de pagos <select id="pickup_payment_count"><option value="1">1 pago</option><option value="2">2 pagos</option><option value="3">3 pagos</option><option value="4">4 pagos</option><option value="5">5 pagos</option><option value="6">6 pagos</option><option value="7">7 pagos</option><option value="8">8 pagos</option><option value="9">9 pagos</option><option value="10" selected>10 pagos</option><option value="11">11 pagos</option><option value="12">12 pagos</option><option value="13">13 pagos</option><option value="14">14 pagos</option></select></label>
+        <label class="not-voluntary">Frecuencia <select id="pickup_frequency"><option value="Weekly">Semanal</option><option value="Bi-Weekly">Bi-semanal</option><option value="Monthly">Mensual</option></select></label>
+        <label class="not-voluntary">Finance charge <input id="pickup_finance_charge" readonly></label>
+        <label class="not-voluntary">Total de pagos <input id="pickup_total_payments" readonly></label>
+        <div class="schedule-grid not-voluntary">
           <div class="head">#</div><div class="head">Fecha</div><div class="head">Pago</div><div class="head">Interes</div><div class="head">Capital</div><div class="head">Saldo</div>
           <div class="num">1</div><label>Pago 1 fecha <input id="pickup_date_1" readonly></label><label>Pago 1 pago <input id="pickup_amount_1" readonly></label><label>Pago 1 interes <input id="pickup_interest_1" readonly></label><label>Pago 1 capital <input id="pickup_principal_1" readonly></label><label>Pago 1 saldo <input id="pickup_balance_1" readonly></label>
           <div class="num">2</div><label>Pago 2 fecha <input id="pickup_date_2" readonly></label><label>Pago 2 pago <input id="pickup_amount_2" readonly></label><label>Pago 2 interes <input id="pickup_interest_2" readonly></label><label>Pago 2 capital <input id="pickup_principal_2" readonly></label><label>Pago 2 saldo <input id="pickup_balance_2" readonly></label>
@@ -435,58 +455,61 @@
     const VOLUNTARY_DOCS = [
       {
         key: 'voluntary_notice',
-        name: 'EASYCAR_Repo_Voluntary_Agreement.pdf',
+        name: 'EASYCAR_Voluntary_Return_Agreement.pdf',
         blocks: [
-          { type: 'p', text: 'VOLUNTARY SURRENDER AGREEMENT AND LEGAL NOTICE OF DISPOSITION\nACUERDO Y NOTIFICACION LEGAL DE ENTREGA VOLUNTARIA DE VEHICULO' },
-          { type: 'p', text: 'FINAL LEGAL CONTROL DOCUMENT FOR DEALER SIGNATURE - NOT A RELEASE, NOVATION, OR AUTOMATIC DEBT CANCELLATION\nDOCUMENTO DEFINITIVO DE CONTROL LEGAL PARA FIRMA EN DEALER - NO ES CONDONACION, NOVACION, RELEASE NI CANCELACION AUTOMATICA DE DEUDA' },
-          { type: 'p', text: '1. PARTIES, CONTRACT AND VEHICLE DATA / DATOS DE LAS PARTES, CONTRATO Y VEHICULO' },
+          { type: 'p', text: 'VOLUNTARY VEHICLE RETURN AGREEMENT AND NOTICE\nACUERDO DE DEVOLUCION VOLUNTARIA DEL VEHICULO Y NOTIFICACION' },
+          { type: 'p', text: 'This document identifies the customer, the vehicle being returned, the original sale contract information, the payment status, and the vehicle condition at the time of return.\nEste documento identifica al cliente, el vehiculo que se devuelve, la informacion del contrato original de venta, el estado de pagos y la condicion del vehiculo al momento de la devolucion.' },
+          { type: 'p', text: '1. CUSTOMER, CONTRACT AND VEHICLE IDENTIFICATION / IDENTIFICACION DEL CLIENTE, CONTRATO Y VEHICULO' },
           { type: 'table', rows: [
             ['Debtor / Cliente: {{full_name}}', 'Address / Direccion: {{address}}'],
             ['Phone / Telefono: {{phone}}', 'Email: {{customer_email}}'],
-            ['Account No. / Cuenta: {{account_number}}', 'Contract Date / Fecha: {{transaction_date_display}}'],
+            ['Stock No. / Stock: {{stock_number}}', 'Account / Cuenta: {{account_number}}'],
+            ['Original Sale Date / Fecha de venta original: {{transaction_date_display}}', 'Return Date / Fecha de devolucion: {{surrender_date_display}}'],
+            ['Days Vehicle Was Sold / Dias que estuvo vendido: {{surrender_days_sold}}', 'Monthly Payment / Cuota mensual: {{surrender_monthly_payment_money}}'],
             ['Vehicle / Vehiculo: {{vehicle_year_make}}', 'Color: {{vehicle_color}}'],
             ['VIN: {{vin}}', 'Plate / Placa: {{vehicle_plate}}'],
-            ['Mileage / Millas: {{vehicle_mileage_display}}', 'Delivery Date & Time / Fecha y hora: {{surrender_date_display}} {{surrender_time}}'],
+            ['Mileage / Millas: {{vehicle_mileage_display}}', 'Return Time / Hora de devolucion: {{surrender_time}}'],
             ['Location / Lugar: {{surrender_location}}', 'Items Received / Recibido: Keys {{surrender_keys}} | Title {{surrender_title}} | Registration {{surrender_registration}}']
           ] },
-          { type: 'p', text: '2. DEFAULT & VOLUNTARY SURRENDER DECLARATION / DECLARACION DE INCUMPLIMIENTO Y ENTREGA' },
+          { type: 'p', text: '2. VOLUNTARY RETURN DECLARATION / DECLARACION DE DEVOLUCION VOLUNTARIA' },
           { type: 'table', rows: [[
-            'The DEBTOR acknowledges being in contractual default under the Retail Installment Sale Contract identified above. The DEBTOR voluntarily surrenders physical possession of the vehicle to EASYCAR LLC, secured party/lienholder, without violence, threat, force, breach of the peace, or physical opposition. The voluntary surrender is an act of cooperation by the debtor and constitutes a repossession/voluntary surrender for purposes of F.S. 679.609.',
-            'El DEUDOR reconoce que se encuentra en incumplimiento contractual bajo el Contrato de Venta a Plazos identificado arriba. El DEUDOR entrega voluntariamente la posesion fisica del vehiculo a EASYCAR LLC, acreedor garantizado/lienholder, sin violencia, amenaza, fuerza, breach of peace, ni oposicion fisica. La entrega voluntaria es un acto de cooperacion del deudor y constituye repossession/voluntary surrender para efectos del F.S. 679.609.'
+            'The customer voluntarily returns physical possession of the vehicle identified above to EASYCAR LLC. The return is made without threats, force, violence, breach of the peace, or physical opposition.',
+            'El cliente devuelve voluntariamente la posesion fisica del vehiculo identificado arriba a EASYCAR LLC. La devolucion se realiza sin amenazas, fuerza, violencia, alteracion de la paz u oposicion fisica.'
           ], [
-            'Acceptance of the vehicle by EASYCAR LLC does NOT constitute full payment, contract rescission, balance forgiveness, settlement, release, waiver of rights, or waiver to collect the deficiency balance. All contractual obligations remain in effect until final liquidation.',
-            'La aceptacion del vehiculo por EASYCAR LLC NO significa pago total, rescision del contrato, condonacion de saldo, settlement, release, waiver de derechos, ni renuncia a cobrar saldo de deficiencia. Todas las obligaciones contractuales permanecen vigentes hasta liquidacion final.'
+            'Receiving the vehicle does not mean the account is paid in full, settled, cancelled, forgiven, or released. The account remains subject to final review, payoff, sale, accounting, and any lawful balance that may remain.',
+            'Recibir el vehiculo no significa que la cuenta queda pagada, saldada, cancelada, perdonada o liberada. La cuenta queda sujeta a revision final, payoff, venta, contabilidad y cualquier saldo legal que pueda quedar pendiente.'
           ]] },
-          { type: 'p', text: '2A. ACKNOWLEDGMENT: VOLUNTARY SURRENDER IS NOT DEBT FORGIVENESS' },
+          { type: 'p', text: '3. PAYMENT STATUS / ESTADO DE PAGOS' },
           { type: 'table', rows: [[
-            '[X] I understand that my voluntary surrender of the vehicle does NOT cancel, forgive, reduce, or eliminate my debt obligation.\n[X] All contractual obligations under the Original Contract remain in full force and effect.',
-            '[X] Entiendo que mi entrega voluntaria del vehiculo NO cancela, perdona, reduce, ni elimina mi obligacion de deuda.\n[X] Todas las obligaciones contractuales bajo el Contrato Original permanecen en vigor total.'
+            'Monthly Payment: {{surrender_monthly_payment_money}}\nInstallments Paid: {{surrender_paid_installments}}\nInstallments Owed: {{surrender_owed_installments}}\nAmount Owed in Installments: {{surrender_amount_owed_money}}\nVehicle Payoff: {{surrender_payoff_money}}',
+            'Cuota mensual: {{surrender_monthly_payment_money}}\nCuotas pagadas: {{surrender_paid_installments}}\nCuotas pendientes: {{surrender_owed_installments}}\nCantidad pendiente en cuotas: {{surrender_amount_owed_money}}\nPayoff del vehiculo: {{surrender_payoff_money}}'
           ]] },
-          { type: 'p', text: '2B. BENEFIT OF VOLUNTARY SURRENDER / BENEFICIO DE LA ENTREGA VOLUNTARIA' },
+          { type: 'p', text: '4. REPAIR, INSPECTION AND COST NOTICE / AVISO DE REPARACION, INSPECCION Y COSTOS' },
           { type: 'table', rows: [[
-            'By voluntarily delivering the vehicle, Debtor avoids additional towing, recovery, impound, storage, legal, collection, inspection, repair, title, lien release, insurance, liability, and repossession agent fees that could otherwise be charged to the account.',
-            'Al entregar voluntariamente el vehiculo, el Deudor evita cargos adicionales de grua, recuperacion, deposito, almacenamiento, legales, cobranza, inspeccion, reparacion, titulo, liberacion de gravamen, seguros, responsabilidad y agente reposedor que de otra manera podrian cargarse a la cuenta.'
+            'At the time of signing, EASYCAR LLC may not yet know whether the vehicle has repair, cleaning, towing, storage, inspection, missing item, damage, or reconditioning costs. Those costs, if any, are subject to later inspection and final accounting.',
+            'Al momento de firmar, EASYCAR LLC puede no saber todavia si el vehiculo tiene costos de reparacion, limpieza, grua, almacenamiento, inspeccion, articulos faltantes, danos o reacondicionamiento. Esos costos, si existen, quedan sujetos a inspeccion posterior y contabilidad final.'
           ]] },
-          { type: 'p', text: '3. NOTICE OF DISPOSITION: PLAN TO SELL COLLATERAL / AVISO DE DISPOSICION DE LA GARANTIA' },
+          { type: 'p', text: '5. NOTICE OF DISPOSITION / AVISO DE DISPOSICION' },
           { type: 'table', rows: [
             ['Method / Metodo: [X] Private Sale / Venta Privada   [ ] Auction / Subasta', 'Earliest Sale Date / Fecha minima: {{surrender_sale_date_display}}'],
             ['EASYCAR LLC intends to dispose of the vehicle in a commercially reasonable transaction on or after the earliest sale date indicated above, via private sale, auction, retail resale, or wholesale. The debtor acknowledges receiving this notice before leaving the premises.', 'EASYCAR LLC tiene la intencion de disponer del vehiculo en una transaccion comercialmente razonable en fecha igual o posterior a la indicada arriba, mediante venta privada, subasta, venta al detal, o mayorista. El deudor reconoce haber recibido esta notificacion antes de retirarse.']
           ] },
-          { type: 'p', text: '4. BALANCE, DEFICIENCY, REDEMPTION & ACCOUNTING / CUENTA, DEFICIENCIA Y REDENCION' },
+          { type: 'p', text: '6. ACCOUNTING SUMMARY / RESUMEN DE CUENTA' },
           { type: 'table', rows: [
-            ['Estimated Principal Payoff / Capital estimado: {{surrender_payoff_money}}', 'As of Date / A la fecha: {{surrender_date_display}}'],
-            ['Past Due Payments & Fees / Cuotas y cargos vencidos: {{surrender_past_due_money}}', 'Preliminary Total / Total preliminar: {{surrender_total_money}}'],
-            ['Subject to final reconciliation and costs.', 'Sujeto a conciliacion y costos finales.']
+            ['Original Sale Date / Fecha de venta original: {{transaction_date_display}}', 'Return Date / Fecha de devolucion: {{surrender_date_display}}'],
+            ['Days Sold / Dias vendido: {{surrender_days_sold}}', 'Payoff / Payoff: {{surrender_payoff_money}}'],
+            ['Installments Owed / Cuotas pendientes: {{surrender_owed_installments}}', 'Amount Owed / Cantidad pendiente: {{surrender_amount_owed_money}}'],
+            ['Subject to final inspection, sale, reconciliation and costs.', 'Sujeto a inspeccion final, venta, conciliacion y costos.']
           ] },
-          { type: 'p', text: '4A. ACKNOWLEDGMENT: PERSONAL DEFICIENCY LIABILITY' },
+          { type: 'p', text: '7. CUSTOMER ACKNOWLEDGMENT / RECONOCIMIENTO DEL CLIENTE' },
           { type: 'table', rows: [[
-            '[X] If the net proceeds of the vehicle sale are less than my total debt, I remain personally responsible for the deficiency balance.\n[X] EASYCAR LLC reserves the right to collect the deficiency through civil action, judgment, wage garnishment, or other legal remedies.',
-            '[X] Si el producto neto de la venta es menor que mi deuda total, sigo siendo personalmente responsable de la diferencia.\n[X] EASYCAR LLC se reserva el derecho de cobrar la deficiencia mediante accion civil, sentencia, embargo de salarios, u otros remedios legales.'
+            '[X] I voluntarily return the vehicle identified in this document.\n[X] I understand that returning the vehicle does not automatically cancel the account balance.\n[X] I understand that final amounts may change after inspection, sale, repairs, costs, credits, and accounting.',
+            '[X] Devuelvo voluntariamente el vehiculo identificado en este documento.\n[X] Entiendo que devolver el vehiculo no cancela automaticamente el saldo de la cuenta.\n[X] Entiendo que los montos finales pueden cambiar despues de inspeccion, venta, reparaciones, costos, creditos y contabilidad.'
           ]] },
-          { type: 'p', text: '5. ACKNOWLEDGMENT: COMPREHENSION & NO VERBAL PROMISES' },
+          { type: 'p', text: '8. NO VERBAL PROMISES / SIN PROMESAS VERBALES' },
           { type: 'table', rows: [[
-            '[X] I have read this entire agreement in English/Spanish and understand all terms, obligations, and legal consequences.\n[X] No representative of EASYCAR LLC has promised me that my debt will be forgiven, reduced, or worked out without full payment.',
-            '[X] He leido este acuerdo completo en ingles/espanol y entiendo todos los terminos, obligaciones y consecuencias legales.\n[X] Ningun representante de EASYCAR LLC me ha prometido que mi deuda sera perdonada, reducida, o arreglada sin pago total.'
+            'No verbal statement changes this written document. Any agreement to forgive, reduce, settle, or modify the account must be in writing and signed by EASYCAR LLC.',
+            'Ninguna declaracion verbal cambia este documento escrito. Cualquier acuerdo para perdonar, reducir, saldar o modificar la cuenta debe constar por escrito y estar firmado por EASYCAR LLC.'
           ]] },
           { type: 'p', text: 'SIGNATURES / FIRMAS' },
           { type: 'table', rows: [['DEBTOR / CLIENTE', 'EASYCAR LLC OPERATOR / OPERADOR']] },
@@ -495,17 +518,17 @@
       },
       {
         key: 'voluntary_condition',
-        name: 'EASYCAR_Repo_Voluntary_Condition_Photos.pdf',
+        name: 'EASYCAR_Voluntary_Return_Condition_Photos.pdf',
         blocks: [
           { type: 'p', text: 'VOLUNTARY SURRENDER VEHICLE CONDITION, PROPERTY AND PHOTO CHECKLIST\nCHECKLIST DE CONDICION, PERTENENCIAS Y FOTOS DE ENTREGA VOLUNTARIA' },
           { type: 'table', rows: [
-            ['Customer / Cliente: {{full_name}}', 'Date / Fecha: {{surrender_date_display}}'],
+            ['Customer / Cliente: {{full_name}}', 'Return Date / Fecha de devolucion: {{surrender_date_display}}'],
             ['Vehicle / Vehiculo: {{vehicle_year_make}}', 'VIN: {{vin}}'],
             ['Mileage / Millas: {{vehicle_mileage_display}}', 'Plate / Placa: {{vehicle_plate}}']
           ] },
           { type: 'p', text: '6. VEHICLE CONDITION & PERSONAL PROPERTY / CONDICION DEL VEHICULO Y PERTENENCIAS' },
           { type: 'table', rows: [
-            ['Exterior Inspection / Inspeccion exterior: {{surrender_exterior}}', 'Mechanical Status / Estado mecanico: {{surrender_mechanical}}'],
+            ['Exterior Condition / Condicion exterior: {{surrender_exterior}}', 'Mechanical Status / Estado mecanico: {{surrender_mechanical}}'],
             ['Accessories / Accesorios: Keys {{surrender_keys}} | Title {{surrender_title}} | Registration {{surrender_registration}}', 'Personal Property / Pertenencias: {{surrender_personal_property}}'],
             ['Evidence / Evidencia: [X] Photos Taken / Fotos tomadas   [ ] Video Recorded / Video grabado', 'Photo Notes / Notas fotos: {{surrender_photo_notes}}']
           ] },
@@ -521,8 +544,8 @@
           ]] },
           { type: 'p', text: 'PHOTO REQUIREMENT / REQUISITO DE FOTOS' },
           { type: 'table', rows: [[
-            'Required photos before closing the file: front, rear, right side, left side, interior, odometer, VIN plate, keys, visible damage, and any personal property left inside.',
-            'Fotos requeridas antes de cerrar el expediente: frente, trasera, lado derecho, lado izquierdo, interior, odometro, placa VIN, llaves, danos visibles y cualquier pertenencia dejada dentro.'
+            'Four required photos are reserved for the return file: front, rear, side/interior, and odometer/VIN/damage detail.',
+            'Se reservan cuatro fotos obligatorias para el expediente de devolucion: frente, trasera, lado/interior y detalle de odometro/VIN/dano.'
           ]] },
           { type: 'p', text: 'SIGNATURES / FIRMAS' },
           { type: 'table', rows: [['DEBTOR / CLIENTE', 'EASYCAR LLC OPERATOR / OPERADOR']] },
@@ -628,7 +651,7 @@
       conditional: 'Conditional Delivery',
       communication: 'Communication Authorization',
       creditapp: 'Credit Application',
-      voluntary_notice: 'Repo Voluntary Agreement',
+      voluntary_notice: 'Voluntary Return Agreement',
       voluntary_condition: 'Vehicle Condition & Photos'
     };
     const DOC_SETS = {
@@ -639,7 +662,7 @@
     const MODE_COPY = {
       BHPH: 'BHPH: se generan todos los documentos del paquete.',
       BANCO: 'BANCO: se generan solo Financiamiento de inicial y Credit Card Authorization.',
-      VOLUNTARY: 'REPO VOLUNTARY / ENTREGA VOLUNTARIA: se generan acuerdo legal, aviso de disposicion y checklist de fotos.'
+      VOLUNTARY: 'ENTREGA VOLUNTARIA: identifica cliente, vehiculo, fechas, cuotas, payoff, condicion y 4 fotos.'
     };
     const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO';
     const SUPABASE_CONFIG = {
@@ -653,7 +676,7 @@
       'vin','vehicle_year','vehicle_make','vehicle_model','vehicle_mileage','vehicle_color','vehicle_plate','stock_number','contract_number','transaction_date','sales_rep_name','gps_status','vehicle_history_decision',
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
       'conditional_delivery_date','conditional_deadline',
-      'surrender_date','surrender_time','surrender_location','account_number','surrender_payoff','surrender_past_due','surrender_total','surrender_keys','surrender_title','surrender_registration','surrender_exterior','surrender_mechanical','surrender_personal_property','surrender_photo_notes',
+      'surrender_date','surrender_time','surrender_location','account_number','surrender_monthly_payment','surrender_paid_installments','surrender_owed_installments','surrender_amount_owed','surrender_payoff','surrender_days_sold','surrender_keys','surrender_title','surrender_registration','surrender_exterior','surrender_mechanical','surrender_personal_property','surrender_photo_notes',
       'pickup_down_total','pickup_down_paid_today','pickup_finance_amount','pickup_down_collected_percent','pickup_interest_rate','pickup_start_date','pickup_payment_count','pickup_frequency','pickup_finance_charge','pickup_total_payments',
       ...pickupIds
     ];
@@ -674,6 +697,7 @@
       if (bank) bank.checked = normalized === 'BANCO';
       if (bhph) bhph.checked = normalized === 'BHPH';
       if (voluntary) voluntary.checked = normalized === 'VOLUNTARY';
+      document.body.dataset.saleType = normalized;
       if ($('modeSummary')) $('modeSummary').textContent = MODE_COPY[normalized];
       renderDocs();
     }
@@ -687,7 +711,7 @@
     const money = () => val('authorized_amount') ? '$' + val('authorized_amount').replace(/^\$/, '') : '';
     const moneyValue = id => val(id) ? '$' + val(id).replace(/^\$/, '') : '';
     const parseMoney = id => Number(val(id).replace(/[^0-9.-]/g, '')) || 0;
-    const moneyFromNumber = amount => '$' + (Number(amount) || 0).toFixed(2);
+    const moneyFromNumber = amount => '$' + (Number(amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     function formatDate(date) {
       if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
       return `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}`;
@@ -701,7 +725,7 @@
       if (saleDateInput && !saleDateInput.value) saleDateInput.value = todayInputValue();
       const saleDate = val('transaction_date') || todayInputValue();
       if ($('conditional_delivery_date')) $('conditional_delivery_date').value = saleDate;
-      if ($('surrender_date') && !$('surrender_date').value) $('surrender_date').value = saleDate;
+      if ($('surrender_date') && !$('surrender_date').value) $('surrender_date').value = todayInputValue();
       syncPickupStartDate();
     }
     function dateValue(id) {
@@ -770,6 +794,20 @@
       if (!saleDate) return;
       $('conditional_delivery_date').value = saleDate;
       syncPickupStartDate();
+      updateSurrenderCalculations();
+    }
+    function updateSurrenderCalculations() {
+      const saleDate = parseDateInput('transaction_date');
+      const returnDate = parseDateInput('surrender_date') || new Date();
+      if ($('surrender_days_sold') && saleDate) {
+        const days = Math.max(0, Math.round((returnDate - saleDate) / 86400000));
+        $('surrender_days_sold').value = String(days);
+      }
+      const monthly = parseMoney('surrender_monthly_payment');
+      const owedCount = Number(val('surrender_owed_installments')) || 0;
+      if ($('surrender_amount_owed')) {
+        $('surrender_amount_owed').value = monthly && owedCount ? moneyFromNumber(monthly * owedCount) : '';
+      }
     }
     function updatePaymentRows(count) {
       const children = Array.from(document.querySelectorAll('.schedule-grid > *')).slice(6);
@@ -889,8 +927,9 @@
         return formatDate(addDays(base, 10));
       }
       if (key === 'surrender_payoff_money') return moneyValue('surrender_payoff');
-      if (key === 'surrender_past_due_money') return moneyValue('surrender_past_due');
-      if (key === 'surrender_total_money') return moneyValue('surrender_total');
+      if (key === 'surrender_monthly_payment_money') return moneyValue('surrender_monthly_payment');
+      if (key === 'surrender_amount_owed_money') return moneyValue('surrender_amount_owed');
+      if (key === 'surrender_days_sold') return val('surrender_days_sold');
       if (key === 'conditional_delivery_date_display') return dateValue('conditional_delivery_date');
       if (key === 'conditional_deadline_display') return val('conditional_deadline');
       if (key === 'call_hours_en' || key === 'call_hours_es') {
@@ -1344,10 +1383,12 @@
     }
     ids.forEach(id => $(id)?.addEventListener('input', () => {
       if (id === 'transaction_date') syncSaleDates();
+      if (id.startsWith('surrender_')) updateSurrenderCalculations();
       renderDocs();
     }));
     ids.forEach(id => $(id)?.addEventListener('change', () => {
       if (id === 'transaction_date') syncSaleDates();
+      if (id.startsWith('surrender_')) updateSurrenderCalculations();
       renderDocs();
     }));
     $('vin').addEventListener('input', scheduleVinDecode);

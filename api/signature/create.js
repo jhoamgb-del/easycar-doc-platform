@@ -84,8 +84,10 @@ function requiredSignatureErrors(form) {
     ['surrender_date', 'Fecha de entrega voluntaria'],
     ['surrender_location', 'Lugar de entrega voluntaria'],
     ['account_number', 'Numero de cuenta'],
-    ['surrender_payoff', 'Payoff estimado'],
-    ['surrender_total', 'Total preliminar']
+    ['surrender_monthly_payment', 'Cuota mensual'],
+    ['surrender_paid_installments', 'Cuotas pagadas'],
+    ['surrender_owed_installments', 'Cuotas pendientes'],
+    ['surrender_payoff', 'Payoff del carro']
   ];
   required.push(...(isVoluntary ? voluntaryRequired : paymentRequired));
   for (const [key, label] of required) {
@@ -142,7 +144,7 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
 
   const config = docusealConfig();
   const html = renderDocusealHtml(form);
-  const saleType = form.sale_type === 'VOLUNTARY' ? 'REPO VOLUNTARY' : form.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
+  const saleType = form.sale_type === 'VOLUNTARY' ? 'ENTREGA VOLUNTARIA' : form.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
   const phone = normalizedPhone(form);
   const missing = requiredSignatureErrors(form);
   if (missing.length) throw new Error(`Faltan datos obligatorios antes de enviar: ${missing.join(', ')}`);

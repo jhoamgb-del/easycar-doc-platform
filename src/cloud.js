@@ -127,8 +127,10 @@ function validateForSignature(formData) {
     ['surrender_date', 'Fecha de entrega voluntaria'],
     ['surrender_location', 'Lugar de entrega voluntaria'],
     ['account_number', 'Numero de cuenta'],
-    ['surrender_payoff', 'Payoff estimado'],
-    ['surrender_total', 'Total preliminar']
+    ['surrender_monthly_payment', 'Cuota mensual'],
+    ['surrender_paid_installments', 'Cuotas pagadas'],
+    ['surrender_owed_installments', 'Cuotas pendientes'],
+    ['surrender_payoff', 'Payoff del carro']
   ];
   required.push(...(isVoluntary ? voluntaryRequired : paymentRequired));
   const missing = [];
@@ -246,7 +248,7 @@ async function sendForSignature() {
   }
   const sale = session?.access_token ? await saveSale(formData) : null;
 
-  const saleType = formData.sale_type === 'VOLUNTARY' ? 'REPO VOLUNTARY' : formData.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
+  const saleType = formData.sale_type === 'VOLUNTARY' ? 'ENTREGA VOLUNTARIA' : formData.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
   const approved = window.confirm(`Se enviaran los documentos ${saleType} al email ${formData.customer_email}. El codigo obligatorio de firma llegara por SMS al telefono ${formData.phone}. ¿Continuar?`);
   if (!approved) return;
 

@@ -38,7 +38,7 @@ const DOC_TITLES = {
   conditional: 'Conditional Delivery',
   communication: 'Communication Authorization',
   creditapp: 'Credit Application',
-  voluntary_notice: 'Repo Voluntary Agreement',
+  voluntary_notice: 'Voluntary Return Agreement',
   voluntary_condition: 'Vehicle Condition & Photos'
 };
 const DOC_SETS = {
@@ -188,7 +188,7 @@ function parseMoney(form, id) {
 }
 
 function moneyFromNumber(amount) {
-  return '$' + (Number(amount) || 0).toFixed(2);
+  return '$' + (Number(amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function downCollectedPercent(form) {
@@ -340,8 +340,17 @@ function tokenValue(form, key) {
     return formatDate(addDays(base, 10));
   }
   if (key === 'surrender_payoff_money') return moneyValue(form, 'surrender_payoff');
-  if (key === 'surrender_past_due_money') return moneyValue(form, 'surrender_past_due');
-  if (key === 'surrender_total_money') return moneyValue(form, 'surrender_total');
+  if (key === 'surrender_monthly_payment_money') return moneyValue(form, 'surrender_monthly_payment');
+  if (key === 'surrender_amount_owed_money') {
+    const existing = raw(form, 'surrender_amount_owed');
+    if (existing) return moneyValue(form, 'surrender_amount_owed');
+    return moneyFromNumber(parseMoney(form, 'surrender_monthly_payment') * (Number(raw(form, 'surrender_owed_installments')) || 0));
+  }
+  if (key === 'surrender_days_sold') {
+    const sale = parseDate(raw(form, 'transaction_date'));
+    const returned = parseDate(raw(form, 'surrender_date')) || new Date();
+    return sale ? String(Math.max(0, Math.round((returned - sale) / 86400000))) : '';
+  }
   if (key === 'conditional_delivery_date_display') return formatDate(parseDate(raw(form, 'conditional_delivery_date'))) || transactionDate(form);
   if (key === 'conditional_deadline_display') return raw(form, 'conditional_deadline') || conditionalDeadline(form);
   if (key === 'call_hours_en' || key === 'call_hours_es') {
