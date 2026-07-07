@@ -77,7 +77,7 @@
     .cloud-panel h2 { margin: 0 0 4px; font-size: 1rem; color: var(--dark); }
     .cloud-panel p { margin: 0; color: var(--muted); font-size: .88rem; }
     .cloud-auth { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
-    .cloud-auth label { min-width: 230px; }
+    .cloud-auth label { min-width: 220px; }
     .cloud-auth button { min-height: 42px; }
     .cloud-user { display: none; align-items: center; gap: 10px; }
     .cloud-user.visible { display: flex; }
@@ -272,11 +272,12 @@
       <section class="cloud-panel" aria-labelledby="cloudTitle">
         <div>
           <h2 id="cloudTitle">Acceso del vendedor y expediente central</h2>
-          <p id="cloudStatus">El vendedor entra con su correo para guardar ventas en Supabase y enviar firma digital al cliente.</p>
+          <p id="cloudStatus">El vendedor entra con su correo y contrasena para guardar ventas en Supabase y enviar firma digital al cliente.</p>
         </div>
         <div class="cloud-auth" id="cloudAuth">
-          <label>Correo del vendedor para entrar <input id="sellerEmail" type="email" autocomplete="email" placeholder="sales@easycarus.com"></label>
-          <button type="button" id="sendLoginLink">Enviar enlace de entrada</button>
+          <label>Correo del vendedor <input id="sellerEmail" type="email" autocomplete="email" placeholder="sales@easycarus.com"></label>
+          <label>Contrasena <input id="sellerPassword" type="password" autocomplete="current-password"></label>
+          <button type="button" id="sendLoginLink">Entrar</button>
         </div>
         <div class="cloud-user" id="cloudUser">
           <strong id="cloudUserEmail"></strong>

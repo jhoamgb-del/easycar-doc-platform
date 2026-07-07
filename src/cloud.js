@@ -15,6 +15,7 @@ const controls = {
   user: byId('cloudUser'),
   userEmail: byId('cloudUserEmail'),
   sellerEmail: byId('sellerEmail'),
+  sellerPassword: byId('sellerPassword'),
   sendLogin: byId('sendLoginLink'),
   signOut: byId('signOutSeller'),
   newSale: byId('newCloudSale'),
@@ -409,17 +410,20 @@ async function sendForSignature() {
 
 async function sendLoginLink() {
   const email = controls.sellerEmail.value.trim();
+  const password = controls.sellerPassword.value;
   if (!email) return setCloudStatus('Escribe el correo del vendedor para entrar al sistema.', 'error');
+  if (!password) return setCloudStatus('Escribe la contrasena del vendedor para entrar al sistema.', 'error');
   controls.sendLogin.disabled = true;
   try {
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
-      options: { emailRedirectTo: window.location.origin, shouldCreateUser: false }
+      password
     });
     if (error) throw error;
-    setCloudStatus(`Enviamos un enlace de entrada al vendedor: ${email}. Abre ese correo para activar guardado y firma digital.`, 'good');
+    controls.sellerPassword.value = '';
+    setCloudStatus(`Acceso autorizado: ${email}.`, 'good');
   } catch (error) {
-    setCloudStatus(error.message, 'error');
+    setCloudStatus('No se pudo entrar. Revisa el correo y la contrasena del vendedor.', 'error');
   } finally {
     controls.sendLogin.disabled = false;
   }
@@ -440,6 +444,12 @@ if (!configured) {
   setCloudStatus('Supabase no esta configurado en Vercel. Puedes llenar e imprimir, pero no guardar ni enviar firma digital.');
 } else {
   controls.sendLogin.addEventListener('click', sendLoginLink);
+  controls.sellerPassword.addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      sendLoginLink();
+    }
+  });
   controls.searchArchive.addEventListener('click', () => loadArchive().catch(error => setCloudStatus(error.message, 'error')));
   controls.archiveSearch.addEventListener('keydown', event => {
     if (event.key === 'Enter') {
