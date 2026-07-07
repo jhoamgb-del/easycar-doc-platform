@@ -22,6 +22,10 @@ const controls = {
   badge: byId('cloudSaleBadge'),
   recent: byId('cloudRecent'),
   salesList: byId('cloudSalesList'),
+  archive: byId('archivePanel'),
+  archiveSearch: byId('archiveSearch'),
+  searchArchive: byId('searchArchive'),
+  archiveResults: byId('archiveResults'),
   signatureResult: byId('signatureResult')
 };
 
@@ -50,13 +54,17 @@ function setSessionUi(nextSession) {
     ? 'Enviar los documentos visibles al email del cliente'
     : 'Enviar al cliente ahora. EasyCar queda como contacto y expediente central.';
   controls.recent.hidden = !loggedIn;
+  controls.archive.hidden = !loggedIn;
   setCloudStatus(
     loggedIn
       ? 'Conectado a Supabase. Completa el email del cliente y usa Enviar firma digital al cliente.'
       : 'Puedes enviar la firma digital directo al cliente. El acceso del vendedor solo se usa para ver ventas centrales recientes.',
     loggedIn ? 'good' : ''
   );
-  if (loggedIn) loadRecentSales();
+  if (loggedIn) {
+    loadRecentSales();
+    loadArchive();
+  }
 }
 
 function saleRecord(formData) {
@@ -198,6 +206,19 @@ function statusLabel(status) {
   return labels[status] || status;
 }
 
+function saleTypeLabel(formData = {}) {
+  if (formData.sale_type === 'VOLUNTARY') return 'ENTREGA VOLUNTARIA';
+  if (formData.sale_type === 'BANCO') return 'BANCO';
+  return 'BHPH';
+}
+
+function formatDateDisplay(value) {
+  if (!value) return '';
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-US');
+}
+
 async function loadRecentSales() {
   if (!supabase || !session?.user) return;
   const { data, error } = await supabase
@@ -236,6 +257,104 @@ async function loadRecentSales() {
     row.append(customer, vehicle, status, open);
     controls.salesList.append(row);
   });
+}
+
+async function openArchivedDocument(path) {
+  const { data, error } = await supabase.storage
+    .from('easycar-documents')
+    .createSignedUrl(path, 60 * 10, { download: false });
+  if (error) throw error;
+  window.open(data.signedUrl, '_blank', 'noopener');
+}
+
+function renderArchiveResults(sales) {
+  controls.archiveResults.replaceChildren();
+  if (!sales.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-history';
+    empty.textContent = 'No encontramos expedientes con esa busqueda.';
+    controls.archiveResults.append(empty);
+    return;
+  }
+
+  sales.forEach(sale => {
+    const row = document.createElement('div');
+    row.className = 'archive-row';
+
+    const customer = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = sale.customer_name || 'Cliente sin nombre';
+    const details = document.createElement('div');
+    details.className = 'archive-meta';
+    details.textContent = [
+      sale.customer_email,
+      sale.customer_phone,
+      sale.contract_number ? `Contrato ${sale.contract_number}` : ''
+    ].filter(Boolean).join(' | ');
+    customer.append(name, details);
+
+    const vehicle = document.createElement('div');
+    const vehicleName = document.createElement('strong');
+    vehicleName.textContent = sale.vehicle_description || 'Vehiculo sin completar';
+    const vehicleMeta = document.createElement('div');
+    vehicleMeta.className = 'archive-meta';
+    vehicleMeta.textContent = [
+      sale.vin ? `VIN ${sale.vin}` : '',
+      sale.stock_number ? `Stock ${sale.stock_number}` : ''
+    ].filter(Boolean).join(' | ');
+    vehicle.append(vehicleName, vehicleMeta);
+
+    const status = document.createElement('div');
+    status.className = 'archive-meta';
+    status.textContent = `${saleTypeLabel(sale.form_data)} | ${statusLabel(sale.status)}${sale.transaction_date ? ` | ${formatDateDisplay(sale.transaction_date)}` : ''}`;
+
+    const docs = document.createElement('div');
+    docs.className = 'archive-docs';
+    const documents = sale.doc_sale_documents || [];
+    if (!documents.length) {
+      const pending = document.createElement('span');
+      pending.className = 'archive-meta';
+      pending.textContent = sale.status === 'signed_digital'
+        ? 'Firmado, pendiente de archivo PDF'
+        : 'Aun no hay PDF firmado archivado';
+      docs.append(pending);
+    } else {
+      documents.forEach((document, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'secondary';
+        button.textContent = document.original_name || `Documento firmado ${index + 1}`;
+        button.addEventListener('click', () => openArchivedDocument(document.storage_path).catch(error => setCloudStatus(error.message, 'error')));
+        docs.append(button);
+      });
+    }
+
+    row.append(customer, vehicle, status, docs);
+    controls.archiveResults.append(row);
+  });
+}
+
+async function loadArchive() {
+  if (!supabase || !session?.user) return;
+  const term = controls.archiveSearch.value.trim();
+  let query = supabase
+    .from('doc_sales')
+    .select('id, customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at, doc_sale_documents(id, document_type, storage_path, original_name, created_at)')
+    .order('created_at', { ascending: false })
+    .limit(25);
+
+  if (term) {
+    const safeTerm = term.replace(/[%_,]/g, ' ');
+    const pattern = `%${safeTerm}%`;
+    query = query.or(`customer_name.ilike.${pattern},customer_email.ilike.${pattern},customer_phone.ilike.${pattern},vin.ilike.${pattern},stock_number.ilike.${pattern},contract_number.ilike.${pattern}`);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    setCloudStatus(`No se pudo buscar en el archivo central: ${error.message}`, 'error');
+    return;
+  }
+  renderArchiveResults(data || []);
 }
 
 async function sendForSignature() {
@@ -278,7 +397,10 @@ async function sendForSignature() {
     }
     controls.signatureResult.classList.add('visible');
     setCloudStatus('La solicitud fue enviada al cliente y el expediente quedo guardado para EasyCar.', 'good');
-    if (session?.user) await loadRecentSales();
+    if (session?.user) {
+      await loadRecentSales();
+      await loadArchive();
+    }
   } finally {
     controls.sendSignature.disabled = false;
   }
@@ -316,6 +438,13 @@ if (!configured) {
   setCloudStatus('Supabase no esta configurado en Vercel. Puedes llenar e imprimir, pero no guardar ni enviar firma digital.');
 } else {
   controls.sendLogin.addEventListener('click', sendLoginLink);
+  controls.searchArchive.addEventListener('click', () => loadArchive().catch(error => setCloudStatus(error.message, 'error')));
+  controls.archiveSearch.addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      loadArchive().catch(error => setCloudStatus(error.message, 'error'));
+    }
+  });
   controls.signOut.addEventListener('click', async () => {
     await supabase.auth.signOut();
     setCurrentSale(null);

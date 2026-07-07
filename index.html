@@ -90,6 +90,15 @@
     .cloud-sales-list { display: grid; gap: 6px; }
     .cloud-sale-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 100px auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid #d5e1f1; border-radius: 5px; background: #fff; font-size: .82rem; }
     .cloud-sale-row button { min-height: 32px; }
+    .archive-panel { grid-column: 1 / -1; border-top: 1px solid #d5e1f1; padding-top: 12px; display: grid; gap: 10px; }
+    .archive-panel h3 { margin: 0; font-size: .9rem; color: var(--dark); }
+    .archive-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+    .archive-results { display: grid; gap: 8px; }
+    .archive-row { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) 120px; gap: 10px; padding: 10px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; font-size: .83rem; }
+    .archive-row strong { color: var(--dark); }
+    .archive-meta { color: var(--muted); line-height: 1.35; }
+    .archive-docs { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 7px; }
+    .archive-docs button { min-height: 32px; padding: 0 10px; }
     .signature-result { grid-column: 1 / -1; display: none; padding: 10px 12px; background: #eaf7ef; border: 1px solid #a9d8bb; border-radius: 5px; font-size: .86rem; }
     .signature-result.visible { display: block; }
     .sales-list { display: grid; gap: 8px; }
@@ -283,6 +292,14 @@
         <section class="cloud-recent" id="cloudRecent" hidden>
           <h3>Ventas centrales recientes</h3>
           <div class="cloud-sales-list" id="cloudSalesList"></div>
+        </section>
+        <section class="archive-panel" id="archivePanel" hidden>
+          <h3>Archivo central de documentos</h3>
+          <div class="archive-search">
+            <label>Buscar por cliente, VIN, stock, contrato o email <input id="archiveSearch" autocomplete="off"></label>
+            <button type="button" class="secondary" id="searchArchive">Buscar</button>
+          </div>
+          <div class="archive-results" id="archiveResults"></div>
         </section>
       </section>
       <div class="toolbar">

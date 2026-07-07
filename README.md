@@ -85,7 +85,7 @@ DOCUSEAL_WEBHOOK_SECRET
 - Los vendedores ven sus propias ventas.
 - Gerentes y administradores pueden ver todas las ventas.
 - Cada venta crea o actualiza automaticamente un registro de cliente para historial y busqueda.
-- Los documentos se guardan en un bucket privado.
+- Los documentos firmados se guardan en un bucket privado y se consultan desde el Archivo central de documentos.
 - Los enlaces de firma se crean para un cliente especifico y requieren verificacion por correo.
 - El guardado local del navegador se mantiene solo como respaldo temporal.
 
