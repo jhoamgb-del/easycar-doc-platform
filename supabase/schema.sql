@@ -262,7 +262,7 @@ set search_path = ''
 as $$
   select exists (
     select 1 from public.doc_user_profiles
-    where id = auth.uid() and active and role in ('manager', 'admin')
+    where id = auth.uid() and active and role = 'admin'
   );
 $$;
 

@@ -27,7 +27,15 @@ const controls = {
   archiveSearch: byId('archiveSearch'),
   searchArchive: byId('searchArchive'),
   archiveResults: byId('archiveResults'),
-  signatureResult: byId('signatureResult')
+  signatureResult: byId('signatureResult'),
+  adminPanel: byId('adminPanel'),
+  adminUserEmail: byId('adminUserEmail'),
+  adminUserName: byId('adminUserName'),
+  adminUserRole: byId('adminUserRole'),
+  adminUserPassword: byId('adminUserPassword'),
+  adminCreateUser: byId('adminCreateUser'),
+  adminInviteUser: byId('adminInviteUser'),
+  adminUsers: byId('adminUsers')
 };
 
 let session = null;
@@ -57,6 +65,7 @@ function setSessionUi(nextSession) {
     : 'Entra con un correo autorizado para llenar documentos y enviar firma digital.';
   controls.recent.hidden = !loggedIn;
   controls.archive.hidden = !loggedIn;
+  controls.adminPanel.hidden = true;
   setCloudStatus(
     loggedIn
       ? 'Conectado a Supabase. Completa el email del cliente y usa Enviar firma digital al cliente.'
@@ -66,6 +75,7 @@ function setSessionUi(nextSession) {
   if (loggedIn) {
     loadRecentSales();
     loadArchive();
+    loadAdminUsers();
   }
 }
 
@@ -359,6 +369,104 @@ async function loadArchive() {
   renderArchiveResults(data || []);
 }
 
+function authHeaders() {
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` };
+}
+
+function renderAdminUsers(users) {
+  controls.adminUsers.replaceChildren();
+  users.forEach(user => {
+    const row = document.createElement('div');
+    row.className = 'admin-user-row';
+    const who = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = user.full_name || user.email;
+    const email = document.createElement('div');
+    email.textContent = user.email;
+    who.append(name, email);
+    const role = document.createElement('div');
+    role.textContent = user.role === 'admin' ? 'Admin' : user.role === 'manager' ? 'Manager' : 'Vendedor';
+    const active = document.createElement('div');
+    active.textContent = user.active ? 'Activo' : 'Inactivo';
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'secondary';
+    edit.textContent = 'Editar';
+    edit.addEventListener('click', () => editAdminUser(user));
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'secondary';
+    remove.textContent = user.active ? 'Desactivar' : 'Eliminar';
+    remove.addEventListener('click', () => deleteAdminUser(user));
+    row.append(who, role, active, edit, remove);
+    controls.adminUsers.append(row);
+  });
+}
+
+async function loadAdminUsers() {
+  if (!session?.access_token) return;
+  const response = await fetch('/api/admin/users', { headers: authHeaders() });
+  if (response.status === 403) {
+    controls.adminPanel.hidden = true;
+    return;
+  }
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'No se pudo cargar usuarios');
+  controls.adminPanel.hidden = false;
+  renderAdminUsers(result.users || []);
+}
+
+async function saveAdminUser(mode) {
+  const email = controls.adminUserEmail.value.trim();
+  const fullName = controls.adminUserName.value.trim();
+  const role = controls.adminUserRole.value;
+  const password = controls.adminUserPassword.value;
+  if (!email) return setCloudStatus('Escribe el email del usuario.', 'error');
+  if (mode !== 'invite' && password.length < 8) return setCloudStatus('La contrasena debe tener al menos 8 caracteres.', 'error');
+  const response = await fetch('/api/admin/users', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ action: 'create', mode, email, full_name: fullName, role, password, active: true })
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'No se pudo crear el usuario');
+  controls.adminUserEmail.value = '';
+  controls.adminUserName.value = '';
+  controls.adminUserPassword.value = '';
+  renderAdminUsers(result.users || []);
+  setCloudStatus(mode === 'invite' ? 'Invitacion enviada y usuario registrado.' : 'Usuario creado correctamente.', 'good');
+}
+
+async function editAdminUser(user) {
+  const fullName = window.prompt('Nombre del usuario', user.full_name || '') ?? user.full_name;
+  const role = window.prompt('Rol: seller, manager o admin', user.role || 'seller') ?? user.role;
+  const password = window.prompt('Nueva contrasena opcional. Deja vacio para no cambiarla.', '') || '';
+  const response = await fetch('/api/admin/users', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ action: 'update', id: user.id, email: user.email, full_name: fullName, role, password, active: true })
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'No se pudo actualizar el usuario');
+  renderAdminUsers(result.users || []);
+  setCloudStatus('Usuario actualizado.', 'good');
+}
+
+async function deleteAdminUser(user) {
+  const hardDelete = !user.active;
+  const verb = hardDelete ? 'eliminar definitivamente' : 'desactivar';
+  if (!window.confirm(`Vas a ${verb} el acceso de ${user.email}. ¿Continuar?`)) return;
+  const response = await fetch('/api/admin/users', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ action: 'delete', id: user.id, hardDelete })
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'No se pudo modificar el usuario');
+  renderAdminUsers(result.users || []);
+  setCloudStatus(hardDelete ? 'Usuario eliminado definitivamente.' : 'Usuario desactivado.', 'good');
+}
+
 async function sendForSignature() {
   if (!session?.access_token) throw new Error('Debes entrar con un correo autorizado antes de enviar documentos.');
   const formData = app.collectFormData();
@@ -377,10 +485,9 @@ async function sendForSignature() {
   setCloudStatus('Creando expediente y enviando la solicitud al cliente...', '');
   controls.sendSignature.disabled = true;
   try {
-    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` };
     const response = await fetch('/api/signature/create', {
       method: 'POST',
-      headers,
+      headers: authHeaders(),
       body: JSON.stringify({ saleId: sale.id })
     });
     const result = await response.json();
@@ -451,6 +558,8 @@ if (!configured) {
     }
   });
   controls.searchArchive.addEventListener('click', () => loadArchive().catch(error => setCloudStatus(error.message, 'error')));
+  controls.adminCreateUser.addEventListener('click', () => saveAdminUser('create').catch(error => setCloudStatus(error.message, 'error')));
+  controls.adminInviteUser.addEventListener('click', () => saveAdminUser('invite').catch(error => setCloudStatus(error.message, 'error')));
   controls.archiveSearch.addEventListener('keydown', event => {
     if (event.key === 'Enter') {
       event.preventDefault();

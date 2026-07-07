@@ -35,10 +35,16 @@ export async function authenticateRequest(req) {
 
 export async function findAuthorizedSale(supabase, profile, saleId) {
   let query = supabase.from('doc_sales').select('*').eq('id', saleId);
-  if (!['manager', 'admin'].includes(profile.role)) query = query.eq('created_by', profile.id);
+  if (profile.role !== 'admin') query = query.eq('created_by', profile.id);
   const { data, error } = await query.single();
   if (error || !data) return { error: 'Sale not found or access denied' };
   return { sale: data };
+}
+
+export function requireAdmin(auth) {
+  if (auth.error) return auth;
+  if (auth.profile?.role !== 'admin') return { error: 'Admin access required' };
+  return auth;
 }
 
 export function json(res, status, body) {
