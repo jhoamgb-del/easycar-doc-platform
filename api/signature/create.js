@@ -250,6 +250,9 @@ export default async function handler(req, res) {
       return json(res, 200, result);
     }
 
+    const auth = await authenticateRequest(req);
+    if (auth.error) return json(res, 401, { error: auth.error });
+
     const formData = req.body?.formData;
     if (!formData || typeof formData !== 'object') return json(res, 400, { error: 'formData is required' });
     const missing = requiredSignatureErrors(formData);
@@ -257,20 +260,17 @@ export default async function handler(req, res) {
       return json(res, 400, { error: `Faltan datos obligatorios antes de enviar: ${missing.join(', ')}` });
     }
 
-    const config = docusealConfig();
-    const supabase = adminClient();
-    const ownerId = await defaultSellerId(supabase, config.replyTo);
-    const { data: sale, error: saleError } = await supabase
+    const { data: sale, error: saleError } = await auth.supabase
       .from('doc_sales')
-      .insert(saleRecord(formData, ownerId))
+      .insert(saleRecord(formData, auth.user.id))
       .select('*')
       .single();
     if (saleError) throw saleError;
 
     const result = await createDocusealSubmission({
-      supabase,
+      supabase: auth.supabase,
       sale,
-      sentBy: ownerId
+      sentBy: auth.user.id
     });
     return json(res, 200, result);
   } catch (error) {

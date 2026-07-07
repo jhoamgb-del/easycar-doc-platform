@@ -45,20 +45,21 @@ function setCurrentSale(id, status = 'draft') {
 function setSessionUi(nextSession) {
   session = nextSession;
   const loggedIn = Boolean(session?.user);
+  document.body.dataset.auth = loggedIn ? 'signed-in' : 'signed-out';
   controls.auth.style.display = loggedIn ? 'none' : '';
   controls.user.classList.toggle('visible', loggedIn);
   controls.userEmail.textContent = loggedIn ? session.user.email : '';
-  controls.newSale.disabled = false;
-  controls.sendSignature.disabled = false;
+  controls.newSale.disabled = !loggedIn;
+  controls.sendSignature.disabled = !loggedIn;
   controls.sendSignature.title = loggedIn
     ? 'Enviar los documentos visibles al email del cliente'
-    : 'Enviar al cliente ahora. EasyCar queda como contacto y expediente central.';
+    : 'Entra con un correo autorizado para llenar documentos y enviar firma digital.';
   controls.recent.hidden = !loggedIn;
   controls.archive.hidden = !loggedIn;
   setCloudStatus(
     loggedIn
       ? 'Conectado a Supabase. Completa el email del cliente y usa Enviar firma digital al cliente.'
-      : 'Puedes enviar la firma digital directo al cliente. El acceso del vendedor solo se usa para ver ventas centrales recientes.',
+      : 'Acceso privado para empleados. Entra con un correo autorizado de EasyCar para ver formatos, guardar expedientes y enviar firma digital.',
     loggedIn ? 'good' : ''
   );
   if (loggedIn) {
@@ -358,6 +359,7 @@ async function loadArchive() {
 }
 
 async function sendForSignature() {
+  if (!session?.access_token) throw new Error('Debes entrar con un correo autorizado antes de enviar documentos.');
   const formData = app.collectFormData();
   const missing = validateForSignature(formData);
   if (missing.length) {
@@ -365,7 +367,7 @@ async function sendForSignature() {
     if (firstInvalid) firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
     throw new Error(`No se puede enviar todavia. Falta: ${missing.join(', ')}`);
   }
-  const sale = session?.access_token ? await saveSale(formData) : null;
+  const sale = await saveSale(formData);
 
   const saleType = formData.sale_type === 'VOLUNTARY' ? 'ENTREGA VOLUNTARIA' : formData.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
   const approved = window.confirm(`Se enviaran los documentos ${saleType} al email ${formData.customer_email}. El codigo obligatorio de firma llegara por SMS al telefono ${formData.phone}. ¿Continuar?`);
@@ -374,12 +376,11 @@ async function sendForSignature() {
   setCloudStatus('Creando expediente y enviando la solicitud al cliente...', '');
   controls.sendSignature.disabled = true;
   try {
-    const headers = { 'Content-Type': 'application/json' };
-    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` };
     const response = await fetch('/api/signature/create', {
       method: 'POST',
       headers,
-      body: JSON.stringify(sale ? { saleId: sale.id } : { formData })
+      body: JSON.stringify({ saleId: sale.id })
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'No se pudo enviar para firma');
@@ -413,7 +414,7 @@ async function sendLoginLink() {
   try {
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin }
+      options: { emailRedirectTo: window.location.origin, shouldCreateUser: false }
     });
     if (error) throw error;
     setCloudStatus(`Enviamos un enlace de entrada al vendedor: ${email}. Abre ese correo para activar guardado y firma digital.`, 'good');
@@ -434,6 +435,7 @@ function newSale() {
 window.EasyCarCloud = { saveSale };
 
 if (!configured) {
+  document.body.dataset.auth = 'signed-in';
   controls.auth.style.display = 'none';
   setCloudStatus('Supabase no esta configurado en Vercel. Puedes llenar e imprimir, pero no guardar ni enviar firma digital.');
 } else {
