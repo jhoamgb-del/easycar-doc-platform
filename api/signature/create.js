@@ -4,6 +4,7 @@ import { renderDocusealFooter, renderDocusealHeader, renderDocusealHtml } from '
 function docusealConfig() {
   const apiKey = process.env.DOCUSEAL_API_KEY;
   if (!apiKey) throw new Error('DocuSeal is not configured');
+  const expireDays = Number(process.env.DOCUSEAL_EXPIRE_DAYS || 14);
   return {
     apiKey,
     apiUrl: (process.env.DOCUSEAL_API_URL || 'https://api.docuseal.com').replace(/\/$/, ''),
@@ -12,7 +13,9 @@ function docusealConfig() {
     bccCompleted: process.env.DOCUSEAL_BCC_COMPLETED || 'sales@easycarus.com',
     sendSms: process.env.DOCUSEAL_SEND_SMS !== 'false',
     requirePhone2fa: process.env.DOCUSEAL_REQUIRE_PHONE_2FA !== 'false',
-    requireEmail2fa: process.env.DOCUSEAL_REQUIRE_EMAIL_2FA === 'true'
+    requireEmail2fa: process.env.DOCUSEAL_REQUIRE_EMAIL_2FA === 'true',
+    completedRedirectUrl: process.env.DOCUSEAL_COMPLETED_REDIRECT_URL || 'https://docs.easycarus.com/',
+    expireDays: Number.isFinite(expireDays) && expireDays > 0 ? expireDays : 14
   };
 }
 
@@ -105,6 +108,13 @@ function requiredSignatureErrors(form) {
   return [...new Set(errors)];
 }
 
+function docusealExpiration(days) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  date.setUTCHours(23, 59, 0, 0);
+  return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
+}
+
 async function defaultSellerId(supabase, replyTo) {
   const email = (process.env.EASYCAR_DEFAULT_SELLER_EMAIL || replyTo || 'sales@easycarus.com').toLowerCase();
   const { data, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
@@ -156,8 +166,16 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
     reply_to: config.replyTo,
     phone,
     send_sms: true,
+    completed_redirect_url: config.completedRedirectUrl,
     require_phone_2fa: config.requirePhone2fa,
-    require_email_2fa: config.requireEmail2fa
+    require_email_2fa: config.requireEmail2fa,
+    metadata: {
+      sale_id: sale.id,
+      sale_type: saleType,
+      vin: form.vin || '',
+      stock_number: form.stock_number || '',
+      source: 'easycar-doc-platform'
+    }
   };
   if (!config.sendSms) throw new Error('La verificacion por SMS esta desactivada en la configuracion');
   const response = await fetch(`${config.apiUrl}/submissions/html`, {
@@ -173,6 +191,8 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
       merge_documents: true,
       reply_to: config.replyTo,
       bcc_completed: config.bccCompleted,
+      completed_redirect_url: config.completedRedirectUrl,
+      expire_at: docusealExpiration(config.expireDays),
       documents: [{
         name: `EasyCar ${saleType} Document Package`,
         html,
@@ -183,8 +203,22 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
       send_sms: true,
       submitters: [customerSubmitter],
       message: {
-        subject: `EasyCar - ${saleType} documents ready for your signature`,
-        body: 'Your EasyCar documents are ready. Review every page and sign securely here: {{submitter.link}}\n\nIf you have questions, reply to this email or contact sales@easycarus.com.'
+        subject: `EasyCar - ${saleType} documents ready for secure signature`,
+        body: [
+          'Hello {{submitter.name}},',
+          '',
+          'Your EasyCar documents are ready for secure digital signature.',
+          '',
+          'Please review every page carefully and sign here:',
+          '{{submitter.link}}',
+          '',
+          'For your protection, the signing process requires SMS verification using the phone number provided to EasyCar.',
+          '',
+          'If you have any questions, reply to this email or contact sales@easycarus.com.',
+          '',
+          'Thank you,',
+          'EasyCar LLC'
+        ].join('\n')
       }
     })
   });

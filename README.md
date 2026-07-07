@@ -72,12 +72,41 @@ DOCUSEAL_API_URL
 DOCUSEAL_API_KEY
 DOCUSEAL_CUSTOMER_ROLE
 DOCUSEAL_REPLY_TO
+DOCUSEAL_BCC_COMPLETED
+DOCUSEAL_SEND_SMS
+DOCUSEAL_REQUIRE_PHONE_2FA
+DOCUSEAL_REQUIRE_EMAIL_2FA
+DOCUSEAL_COMPLETED_REDIRECT_URL
+DOCUSEAL_EXPIRE_DAYS
 DOCUSEAL_WEBHOOK_SECRET
 ```
 
 `VITE_SUPABASE_URL` y `SUPABASE_URL` normalmente tienen el mismo valor.
 `DOCUSEAL_API_URL` puede quedar como `https://api.docuseal.com`.
 `DOCUSEAL_REPLY_TO` puede quedar como `sales@easycarus.com`.
+`DOCUSEAL_BCC_COMPLETED` debe quedar como `sales@easycarus.com` para recibir copia final.
+`DOCUSEAL_SEND_SMS=true` y `DOCUSEAL_REQUIRE_PHONE_2FA=true` activan el flujo Pro con verificacion SMS obligatoria.
+`DOCUSEAL_COMPLETED_REDIRECT_URL=https://docs.easycarus.com/` devuelve al cliente al portal despues de firmar.
+`DOCUSEAL_EXPIRE_DAYS=14` limita el tiempo de vigencia del enlace de firma.
+
+## DocuSeal Pro
+
+El sistema queda preparado para usar DocuSeal Pro:
+
+- Solicitud por email al cliente y SMS obligatorio al telefono del cliente.
+- `reply_to` y copia final a `sales@easycarus.com`.
+- Mensaje profesional de EasyCar para la solicitud de firma.
+- Redireccion final al portal `https://docs.easycarus.com/`.
+- Expiracion automatica del enlace de firma.
+- Metadata de venta, tipo de documento, VIN y stock enviada a DocuSeal.
+- Logo EasyCar preparado para subir a DocuSeal: `public/easycar-docuseal-logo-400.png`.
+
+En DocuSeal, revisar que la cuenta correcta sea EasyCar y que Billing muestre Pro activo. Luego configurar:
+
+1. Settings -> Personalization -> Company Logo: subir `public/easycar-docuseal-logo-400.png`.
+2. Settings -> Notifications: completar `sales@easycarus.com` como BCC de documentos completados.
+3. Settings -> Personalization -> Email Templates: ajustar el HTML/texto de los correos si se desea.
+4. Para que el correo salga realmente desde `sales@easycarus.com`, conectar Gmail/Outlook/SMTP de `sales@easycarus.com` en DocuSeal. Mientras eso no este conectado, el API solo garantiza `reply_to=sales@easycarus.com`, no el remitente real.
 
 ## Seguridad
 
@@ -86,7 +115,7 @@ DOCUSEAL_WEBHOOK_SECRET
 - Gerentes y administradores pueden ver todas las ventas.
 - Cada venta crea o actualiza automaticamente un registro de cliente para historial y busqueda.
 - Los documentos firmados se guardan en un bucket privado y se consultan desde el Archivo central de documentos.
-- Los enlaces de firma se crean para un cliente especifico y requieren verificacion por correo.
+- Los enlaces de firma se crean para un cliente especifico y requieren verificacion SMS cuando DocuSeal Pro esta activo.
 - El guardado local del navegador se mantiene solo como respaldo temporal.
 
 ## Desarrollo
