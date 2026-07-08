@@ -29,7 +29,7 @@
     .toolbar p { margin: 0; color: var(--muted); line-height: 1.4; }
     .deal-mode { display: grid; gap: 10px; margin: 0 0 18px; padding: 14px; border: 1px solid #c7d4e5; border-radius: 8px; background: #f8fbff; }
     .deal-mode strong { color: var(--dark); font-size: .92rem; }
-    .mode-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .mode-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
     .mode-tab { display: grid; gap: 5px; min-height: 74px; padding: 11px 12px; border: 2px solid #c7d4e5; border-radius: 7px; background: #fff; color: var(--dark); cursor: pointer; }
     .mode-tab input { position: absolute; opacity: 0; pointer-events: none; }
     .mode-tab span { font-weight: 900; letter-spacing: .05em; }
@@ -54,7 +54,10 @@
     .photo-slot { min-height: 118px; border: 1.5px dashed #9fb3ce; border-radius: 7px; padding: 10px; background: #f8fbff; }
     .photo-slot input { background: #fff; font-size: .82rem; }
     body:not([data-sale-type="VOLUNTARY"]) .voluntary-only { display: none !important; }
+    body:not([data-sale-type="REPO"]) .repo-only { display: none !important; }
+    body:not([data-sale-type="VOLUNTARY"]):not([data-sale-type="REPO"]) .recovery-only { display: none !important; }
     body[data-sale-type="VOLUNTARY"] .not-voluntary { display: none !important; }
+    body[data-sale-type="REPO"] .not-voluntary { display: none !important; }
     label { display: grid; gap: 6px; color: #2f3b51; font-size: .82rem; font-weight: 700; text-transform: uppercase; }
     input, select, textarea { width: 100%; min-height: 42px; border: 1px solid #bac5d6; border-radius: 6px; padding: 10px 11px; font: inherit; background: #fffdf3; color: var(--ink); }
     input.field-error, select.field-error, textarea.field-error { border-color: var(--red); background: #fff1f3; box-shadow: 0 0 0 2px rgba(237,28,46,.12); }
@@ -353,6 +356,11 @@
             <span>ENTREGA VOLUNTARIA</span>
             <small>Devolucion voluntaria, cuenta, payoff, cuotas y fotos.</small>
           </label>
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_type_repo" value="REPO">
+            <span>REPO</span>
+            <small>Reposesion, aviso de venta privada, payoff y deficiencia.</small>
+          </label>
           <label class="mode-tab disabled">
             <input type="radio" name="sale_type_choice" id="sale_type_newdoc" value="NEWDOC" disabled>
             <span>NUEVO DOCUMENTO</span>
@@ -424,7 +432,7 @@
         <label class="voluntary-only">Fecha entrega voluntaria <input id="surrender_date" type="date" readonly></label>
         <label class="voluntary-only">Hora entrega <input id="surrender_time" type="time"></label>
         <label class="voluntary-only">Lugar entrega <input id="surrender_location" value="EASYCAR LLC Facility"></label>
-        <label class="voluntary-only">Cuenta / Account <input id="account_number"></label>
+        <label class="recovery-only">Cuenta / Account <input id="account_number"></label>
         <label class="voluntary-only">Cuota mensual <input id="surrender_monthly_payment"></label>
         <label class="voluntary-only">Cuotas pagadas <input id="surrender_paid_installments" type="number" min="0"></label>
         <label class="voluntary-only">Cuotas que debe <input id="surrender_owed_installments" type="number" min="0"></label>
@@ -444,6 +452,17 @@
           <label class="photo-slot">Foto 4 - Odometro / VIN / dano <input id="surrender_photo_4" type="file" accept="image/*" capture="environment"></label>
         </div>
         <label class="full voluntary-only">Notas de fotos / reparacion <textarea id="surrender_photo_notes">No se conoce todavia si existen costos de reparacion, inspeccion, limpieza, grua, almacenamiento u otros cargos hasta revisar fisicamente el vehiculo.</textarea></label>
+
+        <div class="section-title repo-only">Repo / Reposesion</div>
+        <label class="repo-only">Fecha de reposesion <input id="repo_date" type="date" readonly></label>
+        <label class="repo-only">Lugar repo <input id="repo_location" value="EASYCAR LLC Facility"></label>
+        <label class="repo-only">Venta privada despues de <input id="repo_private_sale_date" readonly></label>
+        <label class="repo-only">Dias vendido <input id="repo_days_sold" readonly></label>
+        <label class="repo-only">Monto vencido <input id="repo_past_due"></label>
+        <label class="repo-only">Saldo actual <input id="repo_current_balance"></label>
+        <label class="repo-only">Costos repo / storage <input id="repo_costs"></label>
+        <label class="repo-only">Payoff del carro <input id="repo_payoff"></label>
+        <label class="full repo-only">Notas repo / bienes personales <textarea id="repo_notes">No se conoce todavia si existen costos finales de reparacion, inspeccion, transporte, almacenaje, venta o conciliacion hasta revisar fisicamente el vehiculo y cerrar la contabilidad.</textarea></label>
 
         <div class="section-title not-voluntary">Financiamiento de inicial / Pago diferido</div>
         <div class="down-summary not-voluntary">
@@ -599,6 +618,119 @@
         ]
       }
     ];
+    const REPO_DOCS = [
+      {
+        key: 'repo_notice',
+        name: 'EASYCAR_Repossession_Notice_And_Customer_Rights.pdf',
+        blocks: [
+          { type: 'p', text: 'REPOSSESSION NOTICE AND CUSTOMER RIGHTS\nAVISO DE REPOSESION Y DERECHOS DEL CLIENTE' },
+          { type: 'p', text: 'Repossession notice package / Paquete de aviso de reposesion' },
+          { type: 'p', text: '1. CUSTOMER, CONTRACT AND VEHICLE IDENTIFICATION / IDENTIFICACION DEL CLIENTE, CONTRATO Y VEHICULO' },
+          { type: 'table', rows: [
+            ['Debtor / Cliente: {{full_name}}', 'Address / Direccion: {{address}}'],
+            ['Phone / Telefono: {{phone}}', 'Email: {{customer_email}}'],
+            ['Stock No. / Stock: {{stock_number}}', 'Account / Cuenta: {{account_number}}'],
+            ['Original Sale Date / Fecha de venta original: {{transaction_date_display}}', 'Repossession Date / Fecha de reposesion: {{repo_date_display}}'],
+            ['Days Vehicle Was Sold / Dias que estuvo vendido: {{repo_days_sold}}', 'Document Date / Fecha documento: {{document_date_display}}'],
+            ['Vehicle / Vehiculo: {{vehicle_year_make}}', 'Color / Color: {{vehicle_color}}'],
+            ['VIN: {{vin}}', 'Plate / Placa: {{vehicle_plate}}'],
+            ['Mileage / Millas: {{vehicle_mileage_display}}', 'Repo Location / Lugar: {{repo_location}}']
+          ] },
+          { type: 'p', text: '2. REPOSSESSION DECLARATION / DECLARACION DE REPOSESION' },
+          { type: 'table', rows: [[
+            'EASYCAR LLC notifies the debtor that we have the vehicle identified above because the debtor broke promises in the Retail Installment Sale Contract.\nThe repossession was performed by or for EASYCAR LLC as secured party/lienholder. Repossession does not mean the account is paid, settled, cancelled, forgiven, or released.',
+            'EASYCAR LLC notifica al deudor que tenemos el vehiculo identificado arriba porque el deudor incumplio promesas del Contrato de Venta a Plazos.\nLa reposesion fue realizada por o para EASYCAR LLC como acreedor garantizado/titular del gravamen. La reposesion no significa que la cuenta queda pagada, saldada, cancelada, perdonada o liberada.'
+          ]] },
+          { type: 'p', text: '3. PAYMENT STATUS / ESTADO DE PAGOS' },
+          { type: 'table', rows: [[
+            'Past Due: {{repo_past_due_money}}\nCurrent Balance: {{repo_current_balance_money}}\nRepossession/Storage Costs: {{repo_costs_money}}\nVehicle Payoff: {{repo_payoff_money}}\nPayoff valid as of: {{document_date_display}}\nRedemption requires the full amount owed, not only past due payments.',
+            'Monto vencido: {{repo_past_due_money}}\nSaldo actual: {{repo_current_balance_money}}\nCostos de reposesion/almacenaje: {{repo_costs_money}}\nPayoff del vehiculo: {{repo_payoff_money}}\nPayoff valido al: {{document_date_display}}\nLa redencion requiere la cantidad total adeudada, no solo pagos vencidos.'
+          ]] },
+          { type: 'p', text: '4. PERSONAL PROPERTY, INSPECTION AND COST NOTICE / BIENES PERSONALES, INSPECCION Y COSTOS' },
+          { type: 'table', rows: [[
+            'Personal property left inside the vehicle is being held at EasyCar or the repossession agent lot. Claim it by calling (786) 818-0018.\nIf not claimed within thirty (30) days from {{document_date_display}}, it may be considered abandoned under Florida law. Final costs may change after storage, transport, repair, sale, credits, and accounting.',
+            'La propiedad personal dejada dentro del vehiculo esta siendo guardada en EasyCar o en el lote del agente. Reclame llamando al (786) 818-0018.\nSi no se reclama dentro de treinta (30) dias desde {{document_date_display}}, podra considerarse abandonada bajo la ley de Florida. Los costos finales pueden cambiar despues de almacenaje, transporte, reparacion, venta, creditos y contabilidad.'
+          ]] },
+          { type: 'p', text: '5. NOTICE OF DISPOSITION / AVISO DE DISPOSICION' },
+          { type: 'table', rows: [[
+            'EASYCAR LLC intends to dispose of the vehicle in a commercially reasonable transaction sometime after {{repo_private_sale_date_display}}, by private sale, auction, retail resale, wholesale, lease, license, or another lawful method.',
+            'EASYCAR LLC tiene la intencion de disponer del vehiculo en una transaccion comercialmente razonable en algun momento despues del {{repo_private_sale_date_display}}, mediante venta privada, subasta, venta al detal, mayorista, arrendamiento, licencia u otro metodo legal.'
+          ]] },
+          { type: 'p', text: '6. ACCOUNTING SUMMARY / RESUMEN DE CUENTA' },
+          { type: 'table', rows: [
+            ['Original Sale Date / Fecha de venta original: {{transaction_date_display}}', 'Repossession Date / Fecha de reposesion: {{repo_date_display}}'],
+            ['Days Sold / Dias vendido: {{repo_days_sold}}', 'Payoff / Payoff: {{repo_payoff_money}}'],
+            ['Past Due / Vencido: {{repo_past_due_money}}', 'Current Balance / Saldo actual: {{repo_current_balance_money}}'],
+            ['Subject to final sale, inspection, reconciliation and costs.', 'Sujeto a venta final, inspeccion, conciliacion y costos.']
+          ] },
+          { type: 'p', text: '7. CUSTOMER ACKNOWLEDGMENT / RECONOCIMIENTO DEL CLIENTE' },
+          { type: 'table', rows: [[
+            '[X] I received notice of repossession.\n[X] I understand repossession does NOT cancel the debt.\n[X] I understand redemption requires the full amount owed, not only past due payments.\n[X] I understand payoff may change after {{document_date_display}}.\n[X] I may request written accounting and must claim property within 30 days.\n[X] If SCRA protections apply, I will notify EasyCar immediately.',
+            '[X] Recibi aviso de reposesion.\n[X] Entiendo que la reposesion NO cancela la deuda.\n[X] Entiendo que redimir requiere la cantidad total adeudada, no solo pagos vencidos.\n[X] Entiendo que el payoff puede cambiar despues de {{document_date_display}}.\n[X] Puedo pedir estado de cuenta y debo reclamar pertenencias dentro de 30 dias.\n[X] Si aplica SCRA, notificare a EasyCar de inmediato.'
+          ]] },
+          { type: 'p', text: '8. NO VERBAL PROMISES / SIN PROMESAS VERBALES' },
+          { type: 'table', rows: [[
+            'No verbal statement changes this notice. Any forgiveness, reduction, settlement, release, or modification must be written and signed by EASYCAR LLC.',
+            'Ninguna declaracion verbal cambia este aviso. Cualquier perdon, reduccion, saldo, liberacion o modificacion debe constar por escrito y estar firmado por EASYCAR LLC.'
+          ]] },
+          { type: 'p', text: 'SIGNATURES / FIRMAS' },
+          { type: 'table', rows: [['CUSTOMER / CLIENTE', 'EASYCAR LLC REPRESENTATIVE / REPRESENTANTE']] },
+          { type: 'p', text: 'EASYCAR LLC | This document is part of the signed vehicle contract, recovery file, and customer notice package.' }
+        ]
+      },
+      {
+        key: 'repo_sale_notice',
+        name: 'EASYCAR_Notice_Of_Plan_To_Sell_Property_Private_Sale.pdf',
+        blocks: [
+          { type: 'p', text: 'NOTICE OF PLAN TO SELL PROPERTY - PRIVATE SALE\nAVISO DE PLAN DE VENTA PRIVADA' },
+          { type: 'p', text: 'Disposition, deficiency, redemption and accounting / Disposicion, deficiencia, redencion y estado de cuenta' },
+          { type: 'p', text: '1. CUSTOMER, CONTRACT AND VEHICLE IDENTIFICATION / IDENTIFICACION DEL CLIENTE, CONTRATO Y VEHICULO' },
+          { type: 'table', rows: [
+            ['Debtor / Cliente: {{full_name}}', 'Address / Direccion: {{address}}'],
+            ['Phone / Telefono: {{phone}}', 'Email: {{customer_email}}'],
+            ['Stock No. / Stock: {{stock_number}}', 'Account / Cuenta: {{account_number}}'],
+            ['Private Sale After / Venta privada despues de: {{repo_private_sale_date_display}}', 'Repossession Date / Fecha de reposesion: {{repo_date_display}}'],
+            ['Days Vehicle Was Sold / Dias que estuvo vendido: {{repo_days_sold}}', 'Document Date / Fecha documento: {{document_date_display}}'],
+            ['Vehicle / Vehiculo: {{vehicle_year_make}}', 'Color / Color: {{vehicle_color}}'],
+            ['VIN: {{vin}}', 'Plate / Placa: {{vehicle_plate}}'],
+            ['Mileage / Millas: {{vehicle_mileage_display}}', 'Repo Location / Lugar: {{repo_location}}']
+          ] },
+          { type: 'p', text: '2. NOTICE OF PRIVATE SALE / AVISO DE VENTA PRIVADA' },
+          { type: 'table', rows: [[
+            'We will sell the above-described vehicle at a private sale sometime after {{repo_private_sale_date_display}}. This date must be at least ten (10) calendar days after {{document_date_display}}. A sale could include a lease or license.\nThe sale will be conducted in a commercially reasonable manner. Final sale price, repair costs, transportation, storage, auction costs, and other allowed expenses may not be known until after disposition.',
+            'Venderemos el vehiculo descrito anteriormente en una venta privada en algun momento despues del {{repo_private_sale_date_display}}. Esta fecha debe ser por lo menos diez (10) dias calendario despues de {{document_date_display}}. Una venta podria incluir arrendamiento o licencia.\nLa venta se realizara de manera comercialmente razonable. El precio final, reparaciones, transporte, almacenaje, subasta y otros gastos permitidos pueden no conocerse hasta despues de la disposicion.'
+          ]] },
+          { type: 'p', text: '3. APPLICATION OF PROCEEDS / APLICACION DEL DINERO' },
+          { type: 'table', rows: [[
+            'The money that we get from the sale, after paying allowed costs to repossess, hold, and prepare the vehicle for sale, will reduce the amount you owe.',
+            'El dinero que obtengamos de la venta, despues de pagar costos permitidos por reposesionar, retener y preparar el vehiculo para la venta, reducira la cantidad que debe.'
+          ]] },
+          { type: 'p', text: '4. DEFICIENCY OR SURPLUS / DEFICIENCIA O SOBRANTE' },
+          { type: 'table', rows: [[
+            'If we get less money than you owe, you WILL still owe us the difference, called a deficiency balance. If we get more money than you owe, you will get the extra money unless we must pay it to someone else.',
+            'Si obtenemos menos dinero del que debe, usted SEGUIRA debiendonos la diferencia, llamada saldo deficiente. Si obtenemos mas dinero del que debe, usted recibira el dinero extra, a menos que debamos pagarlo a otra persona.'
+          ]] },
+          { type: 'p', text: '5. REDEMPTION BEFORE SALE / REDENCION ANTES DE LA VENTA' },
+          { type: 'table', rows: [[
+            'You can get the vehicle back at any time before we sell it by paying us the full amount you owe, not just the past due payments, including our allowed expenses.\nThe payoff is valid only as of {{document_date_display}} and will change daily. Request updated payoff, sale information, or written accounting by calling (786) 818-0018 or emailing sales@easycarus.com.',
+            'Usted puede recuperar el vehiculo en cualquier momento antes de que lo vendamos pagando la cantidad total que debe, no solo los pagos vencidos, incluyendo nuestros gastos permitidos.\nEl payoff es valido solo al {{document_date_display}} y cambiara diariamente. Solicite payoff actualizado, informacion de venta o estado de cuenta llamando al (786) 818-0018 o escribiendo a sales@easycarus.com.'
+          ]] },
+          { type: 'p', text: '6. CUSTOMER ACKNOWLEDGMENT / RECONOCIMIENTO DEL CLIENTE' },
+          { type: 'table', rows: [[
+            '[X] I received notice of EasyCar plan to sell the vehicle.\n[X] I understand sale proceeds will be applied to the account after allowed costs.\n[X] I understand that if sale proceeds are less than what I owe, I WILL still owe the difference.\n[X] I understand payoff and redemption figures change daily and redemption requires the full amount owed.',
+            '[X] Recibi aviso del plan de EasyCar de vender el vehiculo.\n[X] Entiendo que el dinero de la venta se aplicara a la cuenta despues de costos permitidos.\n[X] Entiendo que si la venta produce menos de lo que debo, SEGUIRE debiendo la diferencia.\n[X] Entiendo que payoff y redencion cambian diariamente y redimir requiere la cantidad total adeudada.'
+          ]] },
+          { type: 'p', text: '7. NO VERBAL PROMISES / SIN PROMESAS VERBALES' },
+          { type: 'table', rows: [[
+            'No verbal statement changes this written notice. Any agreement to forgive, reduce, settle, release, or modify the account must be in writing and signed by EASYCAR LLC.',
+            'Ninguna declaracion verbal cambia este aviso escrito. Cualquier acuerdo para perdonar, reducir, saldar, liberar o modificar la cuenta debe constar por escrito y estar firmado por EASYCAR LLC.'
+          ]] },
+          { type: 'p', text: 'SIGNATURES / FIRMAS' },
+          { type: 'table', rows: [['CUSTOMER / CLIENTE', 'EASYCAR LLC REPRESENTATIVE / REPRESENTANTE']] },
+          { type: 'p', text: 'EASYCAR LLC | This document is part of the signed vehicle contract, recovery file, and customer notice package.' }
+        ]
+      }
+    ];
     const pickupSchedule = pickupDocument?.blocks.find(block => block.type === 'table' && block.rows?.[0]?.[0] === '#');
     if (pickupSchedule && pickupSchedule.rows.length < 15) {
       for (let i = pickupSchedule.rows.length; i <= 14; i++) {
@@ -698,17 +830,21 @@
       communication: 'Communication Authorization',
       creditapp: 'Credit Application',
       voluntary_notice: 'Voluntary Return Agreement',
-      voluntary_condition: 'Vehicle Condition & Photos'
+      voluntary_condition: 'Vehicle Condition & Photos',
+      repo_notice: 'Repossession Notice',
+      repo_sale_notice: 'Private Sale Notice'
     };
     const DOC_SETS = {
       BHPH: ORIGINAL_DOCS.map(doc => doc.key),
       BANCO: ['pickup', 'card'],
-      VOLUNTARY: ['voluntary_notice', 'voluntary_condition']
+      VOLUNTARY: ['voluntary_notice', 'voluntary_condition'],
+      REPO: ['repo_notice', 'repo_sale_notice']
     };
     const MODE_COPY = {
       BHPH: 'BHPH: se generan todos los documentos del paquete.',
       BANCO: 'BANCO: se generan solo Financiamiento de inicial y Credit Card Authorization.',
-      VOLUNTARY: 'ENTREGA VOLUNTARIA: identifica cliente, vehiculo, fechas, cuotas, payoff, condicion y 4 fotos.'
+      VOLUNTARY: 'ENTREGA VOLUNTARIA: identifica cliente, vehiculo, fechas, cuotas, payoff, condicion y 4 fotos.',
+      REPO: 'REPO: genera aviso de reposesion y aviso de venta privada con fecha minima de 10 dias.'
     };
     const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO';
     const SUPABASE_CONFIG = {
@@ -723,26 +859,29 @@
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
       'conditional_delivery_date','conditional_deadline',
       'surrender_date','surrender_time','surrender_location','account_number','surrender_monthly_payment','surrender_paid_installments','surrender_owed_installments','surrender_amount_owed','surrender_payoff','surrender_days_sold','surrender_keys','surrender_title','surrender_registration','surrender_exterior','surrender_mechanical','surrender_personal_property','surrender_photo_notes',
+      'repo_date','repo_location','repo_private_sale_date','repo_days_sold','repo_past_due','repo_current_balance','repo_costs','repo_payoff','repo_notes',
       'pickup_down_total','pickup_down_paid_today','pickup_finance_amount','pickup_down_collected_percent','pickup_interest_rate','pickup_start_date','pickup_payment_count','pickup_frequency','pickup_finance_charge','pickup_total_payments',
       ...pickupIds
     ];
     const $ = id => document.getElementById(id);
     const val = id => ($(id)?.value || '').trim();
-    const allDocs = () => [...ORIGINAL_DOCS, ...VOLUNTARY_DOCS];
-    const currentSaleType = () => (val('sale_type') === 'VOLUNTARY' ? 'VOLUNTARY' : val('sale_type') === 'BANCO' ? 'BANCO' : 'BHPH');
+    const allDocs = () => [...ORIGINAL_DOCS, ...VOLUNTARY_DOCS, ...REPO_DOCS];
+    const currentSaleType = () => (val('sale_type') === 'REPO' ? 'REPO' : val('sale_type') === 'VOLUNTARY' ? 'VOLUNTARY' : val('sale_type') === 'BANCO' ? 'BANCO' : 'BHPH');
     function visibleDocs() {
       const order = DOC_SETS[currentSaleType()] || DOC_SETS.BHPH;
       return order.map(key => allDocs().find(doc => doc.key === key)).filter(Boolean);
     }
     function setSaleType(type) {
-      const normalized = type === 'VOLUNTARY' ? 'VOLUNTARY' : type === 'BANCO' ? 'BANCO' : 'BHPH';
+      const normalized = type === 'REPO' ? 'REPO' : type === 'VOLUNTARY' ? 'VOLUNTARY' : type === 'BANCO' ? 'BANCO' : 'BHPH';
       $('sale_type').value = normalized;
       const bank = $('sale_type_bank');
       const bhph = $('sale_type_bhph');
       const voluntary = $('sale_type_voluntary');
+      const repo = $('sale_type_repo');
       if (bank) bank.checked = normalized === 'BANCO';
       if (bhph) bhph.checked = normalized === 'BHPH';
       if (voluntary) voluntary.checked = normalized === 'VOLUNTARY';
+      if (repo) repo.checked = normalized === 'REPO';
       document.body.dataset.saleType = normalized;
       if ($('modeSummary')) $('modeSummary').textContent = MODE_COPY[normalized];
       renderDocs();
@@ -772,6 +911,7 @@
       const saleDate = val('transaction_date') || todayInputValue();
       if ($('conditional_delivery_date')) $('conditional_delivery_date').value = saleDate;
       if ($('surrender_date') && !$('surrender_date').value) $('surrender_date').value = todayInputValue();
+      if ($('repo_date') && !$('repo_date').value) $('repo_date').value = todayInputValue();
       syncPickupStartDate();
     }
     function dateValue(id) {
@@ -841,6 +981,7 @@
       $('conditional_delivery_date').value = saleDate;
       syncPickupStartDate();
       updateSurrenderCalculations();
+      updateRepoCalculations();
     }
     function updateSurrenderCalculations() {
       const saleDate = parseDateInput('transaction_date');
@@ -853,6 +994,17 @@
       const owedCount = Number(val('surrender_owed_installments')) || 0;
       if ($('surrender_amount_owed')) {
         $('surrender_amount_owed').value = monthly && owedCount ? moneyFromNumber(monthly * owedCount) : '';
+      }
+    }
+    function updateRepoCalculations() {
+      const saleDate = parseDateInput('transaction_date');
+      const repoDate = parseDateInput('repo_date') || new Date();
+      if ($('repo_days_sold') && saleDate) {
+        const days = Math.max(0, Math.round((repoDate - saleDate) / 86400000));
+        $('repo_days_sold').value = String(days);
+      }
+      if ($('repo_private_sale_date')) {
+        $('repo_private_sale_date').value = formatDate(addDays(repoDate, 10));
       }
     }
     function updatePaymentRows(count) {
@@ -976,6 +1128,21 @@
       if (key === 'surrender_monthly_payment_money') return moneyValue('surrender_monthly_payment');
       if (key === 'surrender_amount_owed_money') return moneyValue('surrender_amount_owed');
       if (key === 'surrender_days_sold') return val('surrender_days_sold');
+      if (key === 'document_date_display') return formatDate(new Date());
+      if (key === 'repo_date_display') return dateValue('repo_date') || formatDate(new Date());
+      if (key === 'repo_private_sale_date_display') {
+        const base = parseDateInput('repo_date') || new Date();
+        return formatDate(addDays(base, 10));
+      }
+      if (key === 'repo_days_sold') {
+        const sale = parseDateInput('transaction_date');
+        const repo = parseDateInput('repo_date') || new Date();
+        return sale ? String(Math.max(0, Math.round((repo - sale) / 86400000))) : val('repo_days_sold');
+      }
+      if (key === 'repo_past_due_money') return moneyValue('repo_past_due');
+      if (key === 'repo_current_balance_money') return moneyValue('repo_current_balance');
+      if (key === 'repo_costs_money') return moneyValue('repo_costs');
+      if (key === 'repo_payoff_money') return moneyValue('repo_payoff');
       if (key === 'conditional_delivery_date_display') return dateValue('conditional_delivery_date');
       if (key === 'conditional_deadline_display') return val('conditional_deadline');
       if (key === 'call_hours_en' || key === 'call_hours_es') {
@@ -1174,6 +1341,7 @@
     function renderDocs() {
       calculateConditionalDeadline();
       calculatePickupSchedule();
+      updateRepoCalculations();
       const docsToRender = visibleDocs();
       if ($('modeSummary')) $('modeSummary').textContent = MODE_COPY[currentSaleType()];
       document.getElementById('docNav').innerHTML = docsToRender.map((doc, i) => `<a href="#doc-${doc.key}">${i + 1}. ${DOC_TITLES[doc.key]}</a>`).join('');
@@ -1353,12 +1521,14 @@
       ensureDefaultDates();
       calculateConditionalDeadline();
       calculatePickupSchedule();
+      updateRepoCalculations();
       return ids.reduce((data, id) => {
         data[id] = val(id);
         return data;
       }, {});
     }
-    const LOCAL_SALES_KEY = 'easycar_saved_sales_v1';
+    localStorage.removeItem('easycar_saved_sales_v1');
+    const LOCAL_SALES_KEY = 'easycar_saved_sales_v2';
     function getLocalSales() {
       try {
         return JSON.parse(localStorage.getItem(LOCAL_SALES_KEY) || '[]');
@@ -1430,11 +1600,13 @@
     ids.forEach(id => $(id)?.addEventListener('input', () => {
       if (id === 'transaction_date') syncSaleDates();
       if (id.startsWith('surrender_')) updateSurrenderCalculations();
+      if (id.startsWith('repo_')) updateRepoCalculations();
       renderDocs();
     }));
     ids.forEach(id => $(id)?.addEventListener('change', () => {
       if (id === 'transaction_date') syncSaleDates();
       if (id.startsWith('surrender_')) updateSurrenderCalculations();
+      if (id.startsWith('repo_')) updateRepoCalculations();
       renderDocs();
     }));
     $('vin').addEventListener('input', scheduleVinDecode);
@@ -1447,6 +1619,7 @@
     $('sale_type_bhph').addEventListener('change', () => setSaleType('BHPH'));
     $('sale_type_bank').addEventListener('change', () => setSaleType('BANCO'));
     $('sale_type_voluntary').addEventListener('change', () => setSaleType('VOLUNTARY'));
+    $('sale_type_repo').addEventListener('change', () => setSaleType('REPO'));
     $('salesList').addEventListener('click', event => {
       const button = event.target.closest('[data-load-sale]');
       if (button) loadLocalSale(button.dataset.loadSale);
@@ -1473,6 +1646,7 @@
         $('pickup_frequency').value = 'Weekly';
         $('pickup_interest_rate').value = '0';
         if ($('surrender_location')) $('surrender_location').value = 'EASYCAR LLC Facility';
+        if ($('repo_location')) $('repo_location').value = 'EASYCAR LLC Facility';
         if ($('surrender_keys')) $('surrender_keys').value = 'Yes';
         if ($('surrender_exterior')) $('surrender_exterior').value = 'No Visible Damage';
         if ($('surrender_mechanical')) $('surrender_mechanical').value = 'Starts';

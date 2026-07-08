@@ -63,6 +63,7 @@ function parseMoneyValue(value) {
 function requiredSignatureErrors(form) {
   const errors = [];
   const isVoluntary = form.sale_type === 'VOLUNTARY';
+  const isRepo = form.sale_type === 'REPO';
   const required = [
     ['first_name', 'Nombre del cliente'],
     ['last_name', 'Apellido del cliente'],
@@ -92,13 +93,22 @@ function requiredSignatureErrors(form) {
     ['surrender_owed_installments', 'Cuotas pendientes'],
     ['surrender_payoff', 'Payoff del carro']
   ];
-  required.push(...(isVoluntary ? voluntaryRequired : paymentRequired));
+  const repoRequired = [
+    ['repo_date', 'Fecha de reposesion'],
+    ['repo_location', 'Lugar de reposesion'],
+    ['account_number', 'Numero de cuenta'],
+    ['repo_past_due', 'Monto vencido'],
+    ['repo_current_balance', 'Saldo actual'],
+    ['repo_costs', 'Costos de repo/storage'],
+    ['repo_payoff', 'Payoff del carro']
+  ];
+  required.push(...(isRepo ? repoRequired : isVoluntary ? voluntaryRequired : paymentRequired));
   for (const [key, label] of required) {
     if (!String(form[key] ?? '').trim()) errors.push(label);
   }
   if (!normalizedPhone(form)) errors.push('Telefono valido para codigo SMS');
   if (form.customer_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.customer_email))) errors.push('Email valido del cliente');
-  if (!isVoluntary) {
+  if (!isVoluntary && !isRepo) {
     if (parseMoneyValue(form.pickup_down_total) <= 0) errors.push('Monto total de la inicial mayor que $0');
     const paymentCount = Number(form.pickup_payment_count);
     if (!Number.isFinite(paymentCount) || paymentCount < 1 || paymentCount > 14) errors.push('Cantidad de pagos entre 1 y 14');
@@ -154,7 +164,7 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
 
   const config = docusealConfig();
   const html = renderDocusealHtml(form);
-  const saleType = form.sale_type === 'VOLUNTARY' ? 'ENTREGA VOLUNTARIA' : form.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
+  const saleType = form.sale_type === 'REPO' ? 'REPO' : form.sale_type === 'VOLUNTARY' ? 'ENTREGA VOLUNTARIA' : form.sale_type === 'BANCO' ? 'BANCO' : 'BHPH';
   const phone = normalizedPhone(form);
   const missing = requiredSignatureErrors(form);
   if (missing.length) throw new Error(`Faltan datos obligatorios antes de enviar: ${missing.join(', ')}`);

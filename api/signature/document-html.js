@@ -12,8 +12,14 @@ function parseOriginalDocs() {
 }
 
 function parseVoluntaryDocs() {
-  const match = appHtml.match(/const VOLUNTARY_DOCS = (\[[\s\S]*?\]);\s*const pickupSchedule/);
+  const match = appHtml.match(/const VOLUNTARY_DOCS = (\[[\s\S]*?\]);\s*const REPO_DOCS/);
   if (!match) throw new Error('Unable to load EasyCar voluntary package');
+  return Function(`"use strict"; return (${match[1]});`)();
+}
+
+function parseRepoDocs() {
+  const match = appHtml.match(/const REPO_DOCS = (\[[\s\S]*?\]);\s*const pickupSchedule/);
+  if (!match) throw new Error('Unable to load EasyCar repossession package');
   return Function(`"use strict"; return (${match[1]});`)();
 }
 
@@ -24,7 +30,8 @@ function logoSrc() {
 
 const ORIGINAL_DOCS = parseOriginalDocs();
 const VOLUNTARY_DOCS = parseVoluntaryDocs();
-const ALL_DOCS = [...ORIGINAL_DOCS, ...VOLUNTARY_DOCS];
+const REPO_DOCS = parseRepoDocs();
+const ALL_DOCS = [...ORIGINAL_DOCS, ...VOLUNTARY_DOCS, ...REPO_DOCS];
 const LOGO_SRC = logoSrc();
 const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO';
 const DOC_TITLES = {
@@ -39,12 +46,15 @@ const DOC_TITLES = {
   communication: 'Communication Authorization',
   creditapp: 'Credit Application',
   voluntary_notice: 'Voluntary Return Agreement',
-  voluntary_condition: 'Vehicle Condition & Photos'
+  voluntary_condition: 'Vehicle Condition & Photos',
+  repo_notice: 'Repossession Notice',
+  repo_sale_notice: 'Private Sale Notice'
 };
 const DOC_SETS = {
   BHPH: ORIGINAL_DOCS.map(doc => doc.key),
   BANCO: ['pickup', 'card'],
-  VOLUNTARY: ['voluntary_notice', 'voluntary_condition']
+  VOLUNTARY: ['voluntary_notice', 'voluntary_condition'],
+  REPO: ['repo_notice', 'repo_sale_notice']
 };
 
 const pickupDocument = ORIGINAL_DOCS.find(doc => doc.key === 'pickup');
@@ -145,6 +155,7 @@ function raw(form, id) {
 }
 
 function saleType(form) {
+  if (raw(form, 'sale_type') === 'REPO') return 'REPO';
   return raw(form, 'sale_type') === 'VOLUNTARY' ? 'VOLUNTARY' : raw(form, 'sale_type') === 'BANCO' ? 'BANCO' : 'BHPH';
 }
 
@@ -351,6 +362,21 @@ function tokenValue(form, key) {
     const returned = parseDate(raw(form, 'surrender_date')) || new Date();
     return sale ? String(Math.max(0, Math.round((returned - sale) / 86400000))) : '';
   }
+  if (key === 'document_date_display') return formatDate(new Date());
+  if (key === 'repo_date_display') return formatDate(parseDate(raw(form, 'repo_date'))) || formatDate(new Date());
+  if (key === 'repo_private_sale_date_display') {
+    const base = parseDate(raw(form, 'repo_date')) || new Date();
+    return formatDate(addDays(base, 10));
+  }
+  if (key === 'repo_days_sold') {
+    const sale = parseDate(raw(form, 'transaction_date'));
+    const repo = parseDate(raw(form, 'repo_date')) || new Date();
+    return sale ? String(Math.max(0, Math.round((repo - sale) / 86400000))) : '';
+  }
+  if (key === 'repo_past_due_money') return moneyValue(form, 'repo_past_due');
+  if (key === 'repo_current_balance_money') return moneyValue(form, 'repo_current_balance');
+  if (key === 'repo_costs_money') return moneyValue(form, 'repo_costs');
+  if (key === 'repo_payoff_money') return moneyValue(form, 'repo_payoff');
   if (key === 'conditional_delivery_date_display') return formatDate(parseDate(raw(form, 'conditional_delivery_date'))) || transactionDate(form);
   if (key === 'conditional_deadline_display') return raw(form, 'conditional_deadline') || conditionalDeadline(form);
   if (key === 'call_hours_en' || key === 'call_hours_es') {
