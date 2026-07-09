@@ -505,7 +505,8 @@ async function sendForSignature() {
     if (!response.ok) throw new Error(result.error || 'No se pudo enviar para firma');
     setCurrentSale(result.saleId || sale?.id, 'sent');
     controls.signatureResult.replaceChildren();
-    const text = document.createTextNode(`Firma digital enviada al cliente: ${result.sentTo}. EasyCar queda como contacto de respuesta. `);
+    const smsText = result.smsTo ? ` SMS solicitado a ${result.smsTo}.` : '';
+    const text = document.createTextNode(`Firma digital enviada al cliente: ${result.sentTo}.${smsText} EasyCar queda como contacto de respuesta. `);
     controls.signatureResult.append(text);
     if (result.signingUrl) {
       const link = document.createElement('a');

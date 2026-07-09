@@ -241,6 +241,12 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
   const submitterId = submitter.id ? String(submitter.id) : null;
   const signingUrl = submitter.embed_src || submitter.url || (submitter.slug ? `https://docuseal.com/s/${submitter.slug}` : null);
   if (!submissionId) throw new Error('DocuSeal did not return a submission ID');
+  if (!submitter.phone) {
+    throw new Error(`DocuSeal did not confirm a phone number for SMS. Check that the customer phone is valid: ${phone}`);
+  }
+  if (submitter.preferences?.send_sms === false) {
+    throw new Error('DocuSeal created the signature request, but SMS was not enabled by DocuSeal. Check that the EasyCar DocuSeal Pro account has SMS invitations enabled.');
+  }
 
   const { data: requestRecord, error: requestError } = await supabase
     .from('doc_signing_requests')
@@ -269,7 +275,10 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
     requestId: requestRecord.id,
     submissionId,
     signingUrl,
-    sentTo: email
+    sentTo: email,
+    smsTo: submitter.phone || phone,
+    smsEnabled: submitter.preferences?.send_sms !== false,
+    phone2faRequired: config.requirePhone2fa
   };
 }
 
