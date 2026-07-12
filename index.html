@@ -112,7 +112,7 @@
     .archive-docs button { min-height: 32px; padding: 0 10px; }
     .ops-report-panel { grid-column: 1 / -1; border-top: 1px solid #d5e1f1; padding-top: 12px; display: grid; gap: 10px; }
     .ops-report-panel h3 { margin: 0; font-size: .9rem; color: var(--dark); }
-    .ops-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+    .ops-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
     .ops-metric { min-height: 64px; padding: 10px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; text-align: left; cursor: pointer; }
     .ops-metric.active { border-color: var(--blue); background: #eaf2ff; box-shadow: inset 4px 0 0 var(--blue); }
     .ops-metric strong { display: block; color: var(--dark); font-size: 1.25rem; }
@@ -420,6 +420,7 @@
           <button type="button" class="secondary" data-ops-filter="gps">GPS</button>
           <button type="button" class="secondary" data-ops-filter="gap">GAP / Siniestro</button>
           <button type="button" class="secondary" data-ops-filter="recovery">Repo / Entrega</button>
+          <button type="button" class="secondary" data-ops-filter="overdue">Vencidos</button>
           <button type="button" class="secondary" data-ops-filter="operator">Sin seguimiento</button>
         </div>
         <div class="archive-search">
@@ -658,10 +659,36 @@
         <label class="insurance-only">Numero reclamo seguro <input id="insurance_claim_number"></label>
         <label class="insurance-only">Fecha apertura GAP <input id="gap_opened_date" type="date"></label>
         <label class="full insurance-only">Documentos faltantes GAP / siniestro <textarea id="gap_missing_documents"></textarea></label>
+        <label class="insurance-only">Accion del operador
+          <select id="ops_action_type">
+            <option value=""></option>
+            <option value="Revision completa">Revision completa</option>
+            <option value="Llamada seguro">Llamada seguro</option>
+            <option value="Llamada cliente">Llamada cliente</option>
+            <option value="Revision GPS">Revision GPS</option>
+            <option value="Seguimiento GAP">Seguimiento GAP</option>
+            <option value="Repo / entrega">Repo / entrega</option>
+            <option value="Mensaje enviado">Mensaje enviado</option>
+            <option value="Documento recibido">Documento recibido</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </label>
+        <label class="insurance-only">Resultado de la accion
+          <select id="ops_contact_result">
+            <option value=""></option>
+            <option value="Completado">Completado</option>
+            <option value="No contestaron">No contestaron</option>
+            <option value="Pendiente documentos">Pendiente documentos</option>
+            <option value="Irregularidad">Irregularidad</option>
+            <option value="Escalado">Escalado</option>
+            <option value="No aplica">No aplica</option>
+          </select>
+        </label>
+        <label class="full insurance-only">Proxima accion del operador <input id="ops_next_action" placeholder="Ej. llamar agencia, pedir poliza, verificar ubicacion, abrir GAP"></label>
         <label class="full insurance-only">Notas Seguros / GPS / GAP <textarea id="insurance_gps_notes"></textarea></label>
         <div class="ops-action insurance-only">
           <button type="button" id="saveInsuranceGpsReview">Registrar revision Seguros / GPS</button>
-          <div id="insuranceGpsStatus" class="status">Cada registro queda asociado al expediente, usuario, dia y hora cuando la base de auditoria este activa.</div>
+          <div id="insuranceGpsStatus" class="status">La accion, resultado y nota son obligatorios para dejar evidencia auditable con usuario, dia y hora.</div>
         </div>
 
         <div class="section-title sale-operation-only">Venta y pago</div>
@@ -1114,7 +1141,7 @@
       'vehicle_loaded_date','insurance_first_review_date','gps_first_review_date','insurance_verification_mode','insurance_api_provider','insurance_api_account_ref','insurance_api_status',
       'insurance_provider','insurance_policy_number','insurance_agency_phone','insurance_status','insurance_verified_date','insurance_next_review_date','insurance_expiration_date','insurance_payments_current','insurance_comprehensive','insurance_collision','insurance_lienholder',
       'gps_imei','gps_provider','gps_api_provider_1_name','gps_api_provider_1_url','gps_api_provider_1_ref','gps_api_provider_1_status','gps_api_provider_2_name','gps_api_provider_2_url','gps_api_provider_2_ref','gps_api_provider_2_status','gps_device_status','gps_battery_connected','gps_last_mileage','gps_last_location','gps_last_seen_at','gps_next_review_date','gps_monthly_miles_status',
-      'recovery_event_type','recovery_event_date','recovery_policy_active_on_event','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_opened_date','gap_missing_documents','insurance_gps_notes',
+      'recovery_event_type','recovery_event_date','recovery_policy_active_on_event','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_opened_date','gap_missing_documents','ops_action_type','ops_contact_result','ops_next_action','insurance_gps_notes',
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
       'conditional_delivery_date','conditional_deadline',
       'surrender_date','surrender_time','surrender_location','account_number','surrender_monthly_payment','surrender_paid_installments','surrender_owed_installments','surrender_amount_owed','surrender_payoff','surrender_days_sold','surrender_keys','surrender_title','surrender_registration','surrender_exterior','surrender_mechanical','surrender_personal_property','surrender_photo_notes',
@@ -1916,6 +1943,21 @@
       setInsuranceGpsStatus('Registrando revision...', '');
       try {
         const formData = collectFormData();
+        if (!formData.ops_action_type) {
+          $('ops_action_type')?.focus();
+          setInsuranceGpsStatus('Selecciona la accion del operador antes de registrar. Sin accion no hay auditoria real.', 'warn');
+          return;
+        }
+        if (!formData.ops_contact_result) {
+          $('ops_contact_result')?.focus();
+          setInsuranceGpsStatus('Selecciona el resultado de la accion antes de registrar.', 'warn');
+          return;
+        }
+        if ((formData.insurance_gps_notes || '').length < 12) {
+          $('insurance_gps_notes')?.focus();
+          setInsuranceGpsStatus('Escribe una nota concreta de al menos 12 caracteres: a quien llamo, que verifico y que falta.', 'warn');
+          return;
+        }
         const cloudResult = window.EasyCarCloud ? await window.EasyCarCloud.saveInsuranceGpsReview(formData) : null;
         if (!cloudResult) {
           await saveSale();
