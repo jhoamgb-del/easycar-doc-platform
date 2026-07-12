@@ -27,6 +27,11 @@ const controls = {
   archiveSearch: byId('archiveSearch'),
   searchArchive: byId('searchArchive'),
   archiveResults: byId('archiveResults'),
+  importPanel: byId('importPanel'),
+  importFile: byId('bulkImportFile'),
+  importRun: byId('runBulkImport'),
+  importTemplate: byId('downloadImportTemplate'),
+  importStatus: byId('bulkImportStatus'),
   opsReport: byId('opsReportPanel'),
   opsSummary: byId('opsSummary'),
   opsFilters: byId('opsFilters'),
@@ -72,6 +77,7 @@ function setSessionUi(nextSession) {
     : 'Entra con un correo autorizado para llenar documentos y enviar firma digital.';
   controls.recent.hidden = !loggedIn;
   controls.archive.hidden = !loggedIn;
+  controls.importPanel.hidden = !loggedIn;
   controls.opsReport.hidden = !loggedIn;
   controls.adminPanel.hidden = true;
   setCloudStatus(
@@ -225,6 +231,209 @@ async function saveSale(formData) {
   await loadRecentSales();
   await loadOpsReport();
   return data;
+}
+
+function normalizeHeader(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+  const source = String(text || '').replace(/^\uFEFF/, '');
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+    if (quoted) {
+      if (char === '"' && next === '"') {
+        field += '"';
+        index += 1;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        field += char;
+      }
+    } else if (char === '"') {
+      quoted = true;
+    } else if (char === ',') {
+      row.push(field.trim());
+      field = '';
+    } else if (char === '\n') {
+      row.push(field.trim());
+      if (row.some(Boolean)) rows.push(row);
+      row = [];
+      field = '';
+    } else if (char !== '\r') {
+      field += char;
+    }
+  }
+  row.push(field.trim());
+  if (row.some(Boolean)) rows.push(row);
+  return rows;
+}
+
+const importAliases = {
+  first_name: ['nombre', 'firstname', 'primer nombre', 'primernombre', 'name'],
+  middle_name: ['segundo nombre', 'segundonombre', 'middlename'],
+  last_name: ['apellido', 'lastname', 'primer apellido', 'primerapellido'],
+  second_last_name: ['segundo apellido', 'segundoapellido'],
+  customer_email: ['email', 'correo', 'correo electronico', 'customeremail'],
+  phone: ['telefono', 'phone', 'celular', 'mobile'],
+  alternate_phone: ['telefono alterno', 'alternatephone'],
+  address: ['direccion', 'address'],
+  city: ['ciudad', 'city'],
+  state: ['estado', 'state'],
+  zip_code: ['zip', 'zipcode', 'codigo postal', 'codigopostal'],
+  driver_license: ['licencia', 'license', 'driverlicense', 'id'],
+  vin: ['vin', 'vehiclevin'],
+  vehicle_year: ['ano', 'anio', 'year', 'vehicleyear'],
+  vehicle_make: ['marca', 'make', 'vehiclemake'],
+  vehicle_model: ['modelo', 'model', 'vehiclemodel'],
+  vehicle_mileage: ['millas', 'mileage', 'odometer', 'vehiclemileage'],
+  vehicle_color: ['color'],
+  vehicle_plate: ['placa', 'tag', 'plate'],
+  stock_number: ['stock', 'stocknumber'],
+  contract_number: ['contrato', 'contract', 'contractnumber', 'account'],
+  transaction_date: ['fecha venta', 'fechaventa', 'sale date', 'saledate', 'transactiondate'],
+  insurance_provider: ['seguro', 'aseguradora', 'insuranceprovider'],
+  insurance_policy_number: ['poliza', 'policy', 'policynumber', 'insurancepolicynumber'],
+  insurance_expiration_date: ['vence poliza', 'vencimiento poliza', 'insuranceexpirationdate'],
+  gps_imei: ['gps', 'imei', 'gpsimei'],
+  gps_provider: ['proveedor gps', 'gpsprovider'],
+  gap_has_coverage: ['gap', 'tiene gap', 'gapcoverage']
+};
+
+function importValue(row, headerMap, field) {
+  const aliases = [field, ...(importAliases[field] || [])].map(normalizeHeader);
+  for (const alias of aliases) {
+    const index = headerMap.get(alias);
+    if (index !== undefined) return row[index] || '';
+  }
+  return '';
+}
+
+function inputDate(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) return `${iso[1]}-${String(iso[2]).padStart(2, '0')}-${String(iso[3]).padStart(2, '0')}`;
+  const us = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+  if (us) {
+    const year = us[3].length === 2 ? `20${us[3]}` : us[3];
+    return `${year}-${String(us[1]).padStart(2, '0')}-${String(us[2]).padStart(2, '0')}`;
+  }
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function addDaysInput(dateValue, days) {
+  const date = inputDate(dateValue);
+  if (!date) return '';
+  const parsed = new Date(`${date}T00:00:00`);
+  parsed.setDate(parsed.getDate() + days);
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+}
+
+function yesNoGap(value) {
+  const normalized = normalizeHeader(value);
+  if (['si', 'yes', 'y', 'true', '1'].includes(normalized)) return 'Si';
+  if (['no', 'false', '0'].includes(normalized)) return 'No';
+  return value ? 'No confirmado' : '';
+}
+
+function formDataFromImport(row, headerMap) {
+  const data = {};
+  Object.keys(importAliases).forEach(field => {
+    data[field] = importValue(row, headerMap, field);
+  });
+  const fullName = importValue(row, headerMap, 'full_name') || importValue(row, headerMap, 'cliente') || importValue(row, headerMap, 'customer_name');
+  if (fullName && !data.first_name && !data.last_name) {
+    const parts = fullName.split(/\s+/).filter(Boolean);
+    data.first_name = parts.shift() || '';
+    data.last_name = parts.join(' ');
+  }
+  data.vin = cleanVin(data.vin);
+  data.vehicle_year = String(data.vehicle_year || '').replace(/\D/g, '').slice(0, 4);
+  data.transaction_date = inputDate(data.transaction_date);
+  data.insurance_expiration_date = inputDate(data.insurance_expiration_date);
+  data.sale_type = 'BHPH';
+  data.active_module = 'SALE';
+  data.vehicle_loaded_date = importValue(row, headerMap, 'vehicle_loaded_date') || data.transaction_date;
+  data.vehicle_loaded_date = inputDate(data.vehicle_loaded_date);
+  data.insurance_first_review_date = data.vehicle_loaded_date || data.transaction_date;
+  data.gps_first_review_date = data.vehicle_loaded_date || data.transaction_date;
+  data.insurance_next_review_date = addDaysInput(data.insurance_first_review_date, 14);
+  data.gps_next_review_date = addDaysInput(data.gps_first_review_date, 10);
+  data.gap_has_coverage = yesNoGap(data.gap_has_coverage);
+  data.insurance_status = data.insurance_policy_number ? 'Pendiente' : '';
+  data.gps_device_status = data.gps_imei ? 'No verificado' : '';
+  return data;
+}
+
+async function importSalesFromCsv(file) {
+  if (!supabase || !session?.user) throw new Error('Debes entrar con usuario autorizado antes de importar.');
+  if (!file) throw new Error('Selecciona un archivo CSV.');
+  const rows = parseCsv(await file.text());
+  if (rows.length < 2) throw new Error('El CSV debe tener encabezados y al menos una fila.');
+  const headers = rows[0].map(normalizeHeader);
+  const headerMap = new Map(headers.map((header, index) => [header, index]));
+  const imported = rows.slice(1).map(row => formDataFromImport(row, headerMap)).filter(data => {
+    const name = [data.first_name, data.last_name].filter(Boolean).join(' ');
+    return data.vin || name || data.customer_email || data.phone;
+  });
+  if (!imported.length) throw new Error('No encontre filas con cliente o VIN para cargar.');
+
+  const vins = [...new Set(imported.map(row => row.vin).filter(Boolean))];
+  const existingVins = new Set();
+  if (vins.length) {
+    const { data, error } = await supabase.from('doc_sales').select('vin').in('vin', vins);
+    if (error) throw error;
+    (data || []).forEach(item => {
+      if (item.vin) existingVins.add(cleanVin(item.vin));
+    });
+  }
+
+  const records = imported
+    .filter(formData => !formData.vin || !existingVins.has(formData.vin))
+    .map(formData => saleRecord(formData));
+  if (!records.length) return { inserted: 0, skipped: imported.length };
+
+  const { error } = await supabase.from('doc_sales').insert(records);
+  if (error) throw error;
+  await loadRecentSales();
+  await loadArchive();
+  await loadOpsReport();
+  return { inserted: records.length, skipped: imported.length - records.length };
+}
+
+function downloadImportTemplate() {
+  const headers = [
+    'nombre', 'apellido', 'telefono', 'email', 'direccion', 'ciudad', 'estado', 'zip',
+    'VIN', 'ano', 'marca', 'modelo', 'millas', 'color', 'placa', 'stock',
+    'contrato', 'fecha_venta', 'seguro', 'poliza', 'vence_poliza',
+    'gps_imei', 'proveedor_gps', 'gap'
+  ];
+  const example = [
+    'JUAN', 'PEREZ', '3055551212', 'cliente@email.com', '123 Main St', 'Miami', 'FL', '33169',
+    '3KPFK4A78HE069822', '2017', 'KIA', 'Forte', '123000', 'BLUE', 'ABC123', 'EC12362',
+    '2026-40', '2026-07-07', 'Progressive', 'POL12345', '2026-08-07',
+    '867530900000000', 'Proveedor GPS', 'Si'
+  ];
+  const csv = `${headers.join(',')}\n${example.join(',')}\n`;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'DOC_EASYCAR_plantilla_carga_clientes.csv';
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 const insuranceGpsFields = [
@@ -536,7 +745,7 @@ function buildOpsProfile(sale, operations = []) {
   const insuranceOverdue = insuranceDaysSince === null || insuranceDaysSince > 14 || isPastDue(form.insurance_next_review_date);
   const gpsOverdue = gpsDaysSince === null || gpsDaysSince > 10 || isPastDue(form.gps_next_review_date);
   const policyProblem = !form.insurance_policy_number
-    || ['Cancelada', 'Vencida', 'No verificable'].includes(form.insurance_status)
+    || ['Pendiente', 'Cancelada', 'Vencida', 'No verificable'].includes(form.insurance_status)
     || form.insurance_comprehensive === 'No'
     || form.insurance_collision === 'No'
     || form.insurance_lienholder === 'No'
@@ -544,7 +753,7 @@ function buildOpsProfile(sale, operations = []) {
     || isPastDue(form.insurance_expiration_date)
     || insuranceOverdue;
   const gpsProblem = !form.gps_imei
-    || ['Desconectado', 'Sin senal', 'Removido / alterado', 'No localizado'].includes(form.gps_device_status)
+    || ['No verificado', 'Desconectado', 'Sin senal', 'Removido / alterado', 'No localizado'].includes(form.gps_device_status)
     || form.gps_battery_connected === 'No'
     || form.gps_monthly_miles_status === 'Sobre 1500 millas'
     || gpsOverdue;
@@ -882,6 +1091,24 @@ async function saveAdminUser(mode) {
   setCloudStatus(mode === 'invite' ? 'Invitacion enviada y usuario registrado.' : 'Usuario creado correctamente.', 'good');
 }
 
+async function runBulkImport() {
+  controls.importRun.disabled = true;
+  controls.importStatus.textContent = 'Leyendo archivo y creando expedientes centrales...';
+  controls.importStatus.className = 'status';
+  try {
+    const result = await importSalesFromCsv(controls.importFile.files?.[0]);
+    controls.importStatus.textContent = `Carga completada: ${result.inserted} expedientes creados, ${result.skipped} filas omitidas por duplicado o vacias.`;
+    controls.importStatus.className = 'status good';
+    setCloudStatus('Carga masiva completada. Los clientes ya aparecen en archivo central y GPS Y SEGURO.', 'good');
+    controls.importFile.value = '';
+  } catch (error) {
+    controls.importStatus.textContent = `No se pudo cargar el archivo: ${error.message || 'revisa el CSV'}`;
+    controls.importStatus.className = 'status warn';
+  } finally {
+    controls.importRun.disabled = false;
+  }
+}
+
 async function editAdminUser(user) {
   const fullName = window.prompt('Nombre del usuario', user.full_name || '') ?? user.full_name;
   const role = window.prompt('Rol: seller, manager o admin', user.role || 'seller') ?? user.role;
@@ -1007,6 +1234,8 @@ if (!configured) {
   controls.searchArchive.addEventListener('click', () => loadArchive().catch(error => setCloudStatus(error.message, 'error')));
   controls.adminCreateUser.addEventListener('click', () => saveAdminUser('create').catch(error => setCloudStatus(error.message, 'error')));
   controls.adminInviteUser.addEventListener('click', () => saveAdminUser('invite').catch(error => setCloudStatus(error.message, 'error')));
+  controls.importTemplate.addEventListener('click', downloadImportTemplate);
+  controls.importRun.addEventListener('click', runBulkImport);
   controls.archiveSearch.addEventListener('keydown', event => {
     if (event.key === 'Enter') {
       event.preventDefault();

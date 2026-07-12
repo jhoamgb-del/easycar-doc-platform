@@ -110,6 +110,11 @@
     .archive-meta { color: var(--muted); line-height: 1.35; }
     .archive-docs { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 7px; }
     .archive-docs button { min-height: 32px; padding: 0 10px; }
+    .import-panel { grid-column: 1 / -1; border-top: 1px solid #d5e1f1; padding-top: 12px; display: grid; gap: 10px; }
+    .import-panel h3 { margin: 0; font-size: .9rem; color: var(--dark); }
+    .import-actions { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+    .import-actions label { min-width: 280px; flex: 1 1 320px; }
+    .import-actions button { min-height: 42px; }
     .ops-report-panel { grid-column: 1 / -1; border-top: 1px solid #d5e1f1; padding-top: 12px; display: grid; gap: 10px; }
     .ops-report-panel h3 { margin: 0; font-size: .9rem; color: var(--dark); }
     .ops-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
@@ -345,6 +350,16 @@
           </div>
           <div class="archive-results" id="archiveResults"></div>
         </section>
+        <section class="import-panel" id="importPanel" hidden>
+          <h3>Carga masiva de clientes y carros</h3>
+          <p>Sube un CSV exportado desde Excel, Google Sheets o Numbers. El sistema crea expedientes centrales y el modulo GPS Y SEGURO hereda cliente, VIN y vehiculo.</p>
+          <div class="import-actions">
+            <label>Archivo CSV <input id="bulkImportFile" type="file" accept=".csv,text/csv"></label>
+            <button type="button" class="secondary" id="downloadImportTemplate">Plantilla CSV</button>
+            <button type="button" id="runBulkImport">Cargar clientes</button>
+          </div>
+          <div id="bulkImportStatus" class="status">Formato recomendado: nombre, apellido, telefono, email, VIN, ano, marca, modelo, millas, stock, contrato, fecha_venta, poliza, gps_imei, gap.</div>
+        </section>
         <section class="admin-panel" id="adminPanel" hidden>
           <h3>Administracion de usuarios</h3>
           <div class="admin-grid">
@@ -571,6 +586,7 @@
         <label class="insurance-only">Estatus GPS
           <select id="gps_device_status">
             <option value=""></option>
+            <option value="No verificado">No verificado</option>
             <option value="Activo">Activo</option>
             <option value="Desconectado">Desconectado</option>
             <option value="Sin senal">Sin senal</option>
