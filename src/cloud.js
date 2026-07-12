@@ -212,9 +212,13 @@ function validateForSignature(formData) {
 async function saveSale(formData) {
   if (!supabase || !session?.user) return null;
   const record = saleRecord(formData);
-  const query = currentSaleId
-    ? supabase.from('doc_sales').update(record).eq('id', currentSaleId)
-    : supabase.from('doc_sales').insert(record);
+  let query;
+  if (currentSaleId) {
+    const { created_by, status, ...updateRecord } = record;
+    query = supabase.from('doc_sales').update(updateRecord).eq('id', currentSaleId);
+  } else {
+    query = supabase.from('doc_sales').insert(record);
+  }
   const { data, error } = await query.select('id, status').single();
   if (error) throw error;
   setCurrentSale(data.id, data.status);
