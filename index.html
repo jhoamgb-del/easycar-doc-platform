@@ -1103,8 +1103,8 @@
     };
     const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO';
     const SUPABASE_CONFIG = {
-      url: window.EASYCAR_SUPABASE_URL || '',
-      anonKey: window.EASYCAR_SUPABASE_ANON_KEY || ''
+      url: window.EASYCAR_SUPABASE_URL || '%VITE_SUPABASE_URL%' || 'https://hqjsdcrtkxujljobcycm.supabase.co',
+      anonKey: window.EASYCAR_SUPABASE_ANON_KEY || '%VITE_SUPABASE_ANON_KEY%' || 'sb_publishable_8IFGsxcRIr2-QqLS8C2XPQ_aRofyk2I'
     };
     const pickupIds = Array.from({ length: 14 }, (_, i) => i + 1).flatMap(i => [`pickup_date_${i}`, `pickup_amount_${i}`, `pickup_interest_${i}`, `pickup_principal_${i}`, `pickup_balance_${i}`]);
     const ids = [
