@@ -103,6 +103,23 @@ create table if not exists public.doc_signing_events (
   unique (provider, provider_event_id)
 );
 
+create table if not exists public.doc_sale_operations (
+  id uuid primary key default gen_random_uuid(),
+  sale_id uuid not null references public.doc_sales(id) on delete cascade,
+  module text not null check (
+    module in ('insurance_gps', 'bhph', 'bank', 'repo', 'voluntary', 'mechanical', 'survey')
+  ),
+  event_type text not null default 'revision',
+  status text not null default 'Registrado',
+  follow_up_at date,
+  note text,
+  payload jsonb not null default '{}'::jsonb,
+  created_by uuid not null references public.doc_user_profiles(id),
+  created_at timestamptz not null default now()
+);
+
+grant select, insert on public.doc_sale_operations to authenticated;
+
 create index if not exists idx_doc_customers_created_by on public.doc_customers(created_by);
 create index if not exists idx_doc_customers_updated_at on public.doc_customers(updated_at desc);
 create index if not exists idx_doc_customers_email on public.doc_customers(lower(email));
@@ -114,6 +131,10 @@ create index if not exists idx_doc_sales_created_at on public.doc_sales(created_
 create index if not exists idx_doc_sales_vin on public.doc_sales(vin);
 create index if not exists idx_doc_sale_documents_sale_id on public.doc_sale_documents(sale_id);
 create index if not exists idx_doc_signing_requests_sale_id on public.doc_signing_requests(sale_id);
+create index if not exists idx_doc_sale_operations_sale_id on public.doc_sale_operations(sale_id);
+create index if not exists idx_doc_sale_operations_module on public.doc_sale_operations(module);
+create index if not exists idx_doc_sale_operations_created_at on public.doc_sale_operations(created_at desc);
+create index if not exists idx_doc_sale_operations_follow_up_at on public.doc_sale_operations(follow_up_at);
 
 create or replace function public.doc_set_updated_at()
 returns trigger
@@ -262,6 +283,19 @@ set search_path = ''
 as $$
   select exists (
     select 1 from public.doc_user_profiles
+    where id = auth.uid() and active and role in ('manager', 'admin')
+  );
+$$;
+
+create or replace function public.doc_can_admin_users()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.doc_user_profiles
     where id = auth.uid() and active and role = 'admin'
   );
 $$;
@@ -286,10 +320,11 @@ alter table public.doc_sales enable row level security;
 alter table public.doc_sale_documents enable row level security;
 alter table public.doc_signing_requests enable row level security;
 alter table public.doc_signing_events enable row level security;
+alter table public.doc_sale_operations enable row level security;
 
 drop policy if exists "profiles_read" on public.doc_user_profiles;
 create policy "profiles_read" on public.doc_user_profiles for select to authenticated
-using (id = auth.uid() or public.doc_can_manage_all_sales());
+using (id = auth.uid() or public.doc_can_admin_users());
 
 drop policy if exists "customers_read" on public.doc_customers;
 create policy "customers_read" on public.doc_customers for select to authenticated
@@ -332,6 +367,14 @@ using (public.doc_can_access_sale(sale_id));
 drop policy if exists "signing_events_read" on public.doc_signing_events;
 create policy "signing_events_read" on public.doc_signing_events for select to authenticated
 using (public.doc_can_access_sale(sale_id));
+
+drop policy if exists "operations_read" on public.doc_sale_operations;
+create policy "operations_read" on public.doc_sale_operations for select to authenticated
+using (public.doc_can_access_sale(sale_id));
+
+drop policy if exists "operations_insert" on public.doc_sale_operations;
+create policy "operations_insert" on public.doc_sale_operations for insert to authenticated
+with check (public.doc_can_access_sale(sale_id) and created_by = auth.uid());
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('easycar-documents', 'easycar-documents', false, 26214400, array['application/pdf', 'image/jpeg', 'image/png'])

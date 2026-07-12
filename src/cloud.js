@@ -27,6 +27,12 @@ const controls = {
   archiveSearch: byId('archiveSearch'),
   searchArchive: byId('searchArchive'),
   archiveResults: byId('archiveResults'),
+  opsReport: byId('opsReportPanel'),
+  opsSummary: byId('opsSummary'),
+  opsFilters: byId('opsFilters'),
+  opsSearch: byId('opsSearch'),
+  clearOpsSearch: byId('clearOpsSearch'),
+  opsResults: byId('opsResults'),
   signatureResult: byId('signatureResult'),
   adminPanel: byId('adminPanel'),
   adminUserEmail: byId('adminUserEmail'),
@@ -40,6 +46,7 @@ const controls = {
 
 let session = null;
 let currentSaleId = null;
+let opsFilter = 'all';
 
 function setCloudStatus(message, tone = '') {
   controls.status.textContent = message;
@@ -65,6 +72,7 @@ function setSessionUi(nextSession) {
     : 'Entra con un correo autorizado para llenar documentos y enviar firma digital.';
   controls.recent.hidden = !loggedIn;
   controls.archive.hidden = !loggedIn;
+  controls.opsReport.hidden = !loggedIn;
   controls.adminPanel.hidden = true;
   setCloudStatus(
     loggedIn
@@ -75,6 +83,7 @@ function setSessionUi(nextSession) {
   if (loggedIn) {
     loadRecentSales();
     loadArchive();
+    loadOpsReport();
     loadAdminUsers();
   }
 }
@@ -121,6 +130,9 @@ function markField(id, invalid) {
 }
 
 function validateForSignature(formData) {
+  if (formData.active_module === 'INSURANCE_GPS') {
+    return ['Estas en el modulo GPS Y SEGURO. Para enviar documentos de firma, selecciona BHPH, BANCO, ENTREGA VOLUNTARIA o REPOSICION.'];
+  }
   const isVoluntary = formData.sale_type === 'VOLUNTARY';
   const isRepo = formData.sale_type === 'REPO';
   const required = [
@@ -207,7 +219,96 @@ async function saveSale(formData) {
   if (error) throw error;
   setCurrentSale(data.id, data.status);
   await loadRecentSales();
+  await loadOpsReport();
   return data;
+}
+
+const insuranceGpsFields = [
+  'vehicle_loaded_date', 'insurance_first_review_date', 'gps_first_review_date',
+  'insurance_verification_mode', 'insurance_api_provider', 'insurance_api_account_ref',
+  'insurance_api_status',
+  'insurance_provider', 'insurance_policy_number', 'insurance_agency_phone',
+  'insurance_status', 'insurance_verified_date', 'insurance_next_review_date',
+  'insurance_expiration_date', 'insurance_payments_current',
+  'insurance_comprehensive', 'insurance_collision', 'insurance_lienholder',
+  'gps_imei', 'gps_provider',
+  'gps_api_provider_1_name', 'gps_api_provider_1_url', 'gps_api_provider_1_ref',
+  'gps_api_provider_1_status', 'gps_api_provider_2_name', 'gps_api_provider_2_url',
+  'gps_api_provider_2_ref', 'gps_api_provider_2_status',
+  'gps_device_status', 'gps_battery_connected',
+  'gps_last_mileage', 'gps_last_location', 'gps_last_seen_at',
+  'gps_next_review_date', 'gps_monthly_miles_status',
+  'recovery_event_type', 'recovery_event_date', 'recovery_policy_active_on_event',
+  'gap_has_coverage', 'gap_provider', 'gap_contract_number', 'gap_issued_vin',
+  'gap_vin_match', 'gap_issue_date', 'gap_contract_status',
+  'gap_claim_status', 'insurance_claim_number', 'gap_opened_date',
+  'gap_missing_documents', 'insurance_gps_notes'
+];
+
+function insuranceGpsPayload(formData) {
+  return insuranceGpsFields.reduce((payload, field) => {
+    payload[field] = formData[field] || '';
+    return payload;
+  }, {
+    customer_name: [formData.first_name, formData.middle_name, formData.last_name, formData.second_last_name].filter(Boolean).join(' '),
+    customer_phone: formData.phone || '',
+    customer_email: formData.customer_email || '',
+    vehicle: [formData.vehicle_year, formData.vehicle_make, formData.vehicle_model].filter(Boolean).join(' '),
+    vin: formData.vin || '',
+    stock_number: formData.stock_number || '',
+    contract_number: formData.contract_number || '',
+    transaction_date: formData.transaction_date || ''
+  });
+}
+
+async function saveInsuranceGpsReview(formData) {
+  if (!supabase || !session?.user) return null;
+  const sale = await saveSale(formData);
+  const payload = insuranceGpsPayload(formData);
+  const status = formData.insurance_status || formData.gps_device_status || formData.gap_claim_status || 'Registrado';
+  const followUpAt = formData.insurance_next_review_date || formData.gps_next_review_date || null;
+  const rows = [{
+    sale_id: sale.id,
+    module: 'insurance_gps',
+    event_type: formData.recovery_event_type || 'revision_realizada',
+    status,
+    follow_up_at: followUpAt,
+    note: formData.insurance_gps_notes || null,
+    payload,
+    created_by: session.user.id
+  }];
+  if (formData.insurance_next_review_date) {
+    rows.push({
+      sale_id: sale.id,
+      module: 'insurance_gps',
+      event_type: 'proxima_revision_seguro',
+      status: 'Pendiente',
+      follow_up_at: formData.insurance_next_review_date,
+      note: 'Accion automatica: verificar poliza, comprehensive, collision, pagos al dia y EasyCar como lien holder.',
+      payload,
+      created_by: session.user.id
+    });
+  }
+  if (formData.gps_next_review_date) {
+    rows.push({
+      sale_id: sale.id,
+      module: 'insurance_gps',
+      event_type: 'proxima_revision_gps',
+      status: 'Pendiente',
+      follow_up_at: formData.gps_next_review_date,
+      note: 'Accion automatica: verificar GPS activo, conexion a bateria, millas, ubicacion y senal.',
+      payload,
+      created_by: session.user.id
+    });
+  }
+  const { data, error } = await supabase
+    .from('doc_sale_operations')
+    .insert(rows)
+    .select('id, created_at')
+    .limit(1);
+  if (error) throw error;
+  await loadOpsReport();
+  return data?.[0] || null;
 }
 
 async function loadSale(id) {
@@ -229,7 +330,7 @@ function statusLabel(status) {
 }
 
 function saleTypeLabel(formData = {}) {
-  if (formData.sale_type === 'REPO') return 'REPO';
+  if (formData.sale_type === 'REPO') return 'REPOSICION';
   if (formData.sale_type === 'VOLUNTARY') return 'ENTREGA VOLUNTARIA';
   if (formData.sale_type === 'BANCO') return 'BANCO';
   return 'BHPH';
@@ -380,6 +481,285 @@ async function loadArchive() {
   renderArchiveResults(data || []);
 }
 
+function daysBetween(dateValue, fallback = null) {
+  const source = dateValue || fallback;
+  if (!source) return null;
+  const date = new Date(String(source).includes('T') ? source : `${source}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  return Math.floor((today - date) / 86400000);
+}
+
+function isPastDue(dateValue) {
+  const days = daysBetween(dateValue);
+  return days !== null && days > 0;
+}
+
+function cleanVin(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+}
+
+function latestOperation(operations = []) {
+  return [...operations].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0] || null;
+}
+
+function buildOpsProfile(sale, operations = []) {
+  const form = sale.form_data || {};
+  const latest = latestOperation(operations);
+  const policyProblem = !form.insurance_policy_number
+    || ['Cancelada', 'Vencida', 'No verificable'].includes(form.insurance_status)
+    || form.insurance_comprehensive === 'No'
+    || form.insurance_collision === 'No'
+    || form.insurance_lienholder === 'No'
+    || form.insurance_payments_current === 'No'
+    || isPastDue(form.insurance_expiration_date)
+    || isPastDue(form.insurance_next_review_date);
+  const gpsProblem = !form.gps_imei
+    || ['Desconectado', 'Sin senal', 'Removido / alterado', 'No localizado'].includes(form.gps_device_status)
+    || form.gps_battery_connected === 'No'
+    || form.gps_monthly_miles_status === 'Sobre 1500 millas'
+    || isPastDue(form.gps_next_review_date);
+  const gapOpen = Boolean(form.gap_claim_status && !['Sin siniestro', 'Cerrado'].includes(form.gap_claim_status));
+  const soldVin = cleanVin(sale.vin || form.vin);
+  const issuedGapVin = cleanVin(form.gap_issued_vin);
+  const gapVinMismatch = Boolean(issuedGapVin && soldVin && issuedGapVin !== soldVin);
+  const gapProblem = !form.gap_has_coverage
+    || form.gap_has_coverage === 'No confirmado'
+    || (form.gap_has_coverage === 'Si' && (!form.gap_provider || !form.gap_contract_number || !form.gap_issued_vin))
+    || gapVinMismatch
+    || form.gap_vin_match === 'No'
+    || form.gap_vin_match === 'No confirmado'
+    || ['Cancelado', 'No emitido', 'No verificable'].includes(form.gap_contract_status);
+  const recoveryOpen = Boolean(form.recovery_event_type && form.recovery_event_type !== 'Ninguno');
+  const daysSinceOps = daysBetween(latest?.created_at);
+  const noFollowUp = !latest || (daysSinceOps !== null && daysSinceOps > 14);
+  const alerts = [];
+  if (policyProblem) alerts.push('Seguro requiere accion');
+  if (gpsProblem) alerts.push('GPS requiere accion');
+  if (gapProblem) alerts.push(gapVinMismatch ? 'VIN GAP no coincide' : 'GAP requiere verificacion');
+  if (gapOpen) alerts.push('GAP / siniestro activo');
+  if (recoveryOpen) alerts.push('Repo / entrega registrado');
+  if (noFollowUp) alerts.push('Sin seguimiento reciente');
+  return { sale, form, operations, latest, policyProblem, gpsProblem, gapProblem, gapOpen, recoveryOpen, noFollowUp, alerts };
+}
+
+function opsVisible(profile) {
+  const term = controls.opsSearch?.value.trim().toLowerCase() || '';
+  if (term) {
+    const haystack = [
+      profile.sale.customer_name,
+      profile.sale.customer_email,
+      profile.sale.customer_phone,
+      profile.sale.vehicle_description,
+      profile.sale.vin,
+      profile.sale.stock_number,
+      profile.sale.contract_number,
+      profile.form.gps_imei,
+      profile.form.gap_contract_number,
+      profile.form.insurance_policy_number,
+      profile.form.gps_last_location
+    ].filter(Boolean).join(' ').toLowerCase();
+    if (!haystack.includes(term)) return false;
+  }
+  if (opsFilter === 'insurance') return profile.policyProblem;
+  if (opsFilter === 'gps') return profile.gpsProblem;
+  if (opsFilter === 'gap') return profile.gapProblem || profile.gapOpen;
+  if (opsFilter === 'recovery') return profile.recoveryOpen;
+  if (opsFilter === 'operator') return profile.noFollowUp;
+  return true;
+}
+
+function renderOpsMetric(label, value, filter) {
+  const box = document.createElement('button');
+  box.type = 'button';
+  box.className = 'ops-metric';
+  box.dataset.opsFilter = filter;
+  box.classList.toggle('active', opsFilter === filter);
+  const number = document.createElement('strong');
+  number.textContent = value;
+  const text = document.createElement('span');
+  text.textContent = label;
+  box.append(number, text);
+  return box;
+}
+
+function messageTemplate(profile) {
+  const name = profile.sale.customer_name || 'cliente';
+  if (profile.policyProblem) {
+    return `Hola ${name}, EasyCar LLC necesita actualizar/verificar su poliza del vehiculo ${profile.sale.vehicle_description || ''}. Debe estar activa, con comprehensive, collision, pagos al dia y EasyCar LLC como lien holder. Por favor envie la poliza vigente hoy.`;
+  }
+  if (profile.gpsProblem) {
+    return `Hola ${name}, EasyCar LLC necesita verificar el GPS del vehiculo ${profile.sale.vehicle_description || ''}. Por favor confirme la ubicacion actual del vehiculo y disponibilidad para revision del dispositivo.`;
+  }
+  if (profile.gapOpen) {
+    return `Hola ${name}, EasyCar LLC esta dando seguimiento al reclamo/siniestro del vehiculo ${profile.sale.vehicle_description || ''}. Por favor envie cualquier documento pendiente del seguro o GAP para continuar el proceso.`;
+  }
+  return `Hola ${name}, EasyCar LLC esta actualizando el expediente del vehiculo ${profile.sale.vehicle_description || ''}. Por favor comuniquese con nosotros para confirmar la informacion pendiente.`;
+}
+
+async function copyCustomerMessage(profile) {
+  const text = messageTemplate(profile);
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    setCloudStatus('Mensaje preparado y copiado. Puedes enviarlo por WhatsApp, SMS o email.', 'good');
+  } else {
+    window.prompt('Mensaje para el cliente', text);
+  }
+}
+
+function openOpsSale(profile) {
+  loadSale(profile.sale.id)
+    .then(() => {
+      app.setActiveModule?.('INSURANCE_GPS');
+      setCloudStatus('Expediente abierto en GPS Y SEGURO. Registra la revision para dejar fecha, hora y usuario.', 'good');
+    })
+    .catch(error => setCloudStatus(error.message, 'error'));
+}
+
+function showOpsHistory(profile) {
+  const header = `${profile.sale.customer_name || 'Cliente sin nombre'}\n${profile.sale.vehicle_description || 'Vehiculo'}${profile.sale.vin ? ` | VIN ${profile.sale.vin}` : ''}`;
+  const current = [
+    `Seguro: ${profile.form.insurance_status || 'sin verificar'} | Poliza: ${profile.form.insurance_policy_number || 'sin numero'} | Vence: ${profile.form.insurance_expiration_date || 'sin fecha'}`,
+    `GPS: ${profile.form.gps_device_status || 'sin verificar'} | IMEI: ${profile.form.gps_imei || 'sin IMEI'} | Ubicacion: ${profile.form.gps_last_location || 'sin ubicacion'}`,
+    `GAP: ${profile.form.gap_has_coverage || 'sin verificar'} | Contrato: ${profile.form.gap_contract_number || 'sin contrato'} | VIN GAP: ${profile.form.gap_issued_vin || 'sin VIN'}`,
+    `Evento: ${profile.form.recovery_event_type || 'ninguno'} | Fecha: ${profile.form.recovery_event_date || 'sin fecha'} | Poliza activa ese dia: ${profile.form.recovery_policy_active_on_event || 'sin confirmar'}`
+  ].join('\n');
+  const history = profile.operations.length
+    ? profile.operations.slice(0, 12).map(operation => {
+      const date = operation.created_at ? new Date(operation.created_at).toLocaleString('en-US') : 'sin fecha';
+      return `- ${date}: ${operation.event_type} | ${operation.status}${operation.note ? ` | ${operation.note}` : ''}`;
+    }).join('\n')
+    : '- Sin historial operativo registrado todavia.';
+  window.alert(`${header}\n\nESTADO ACTUAL\n${current}\n\nHISTORIAL DEL OPERADOR\n${history}`);
+}
+
+function renderOpsReport(profiles) {
+  controls.opsSummary.replaceChildren(
+    renderOpsMetric('Clientes', profiles.length, 'all'),
+    renderOpsMetric('Alertas seguro', profiles.filter(profile => profile.policyProblem).length, 'insurance'),
+    renderOpsMetric('Alertas GPS', profiles.filter(profile => profile.gpsProblem).length, 'gps'),
+    renderOpsMetric('GAP / siniestro', profiles.filter(profile => profile.gapProblem || profile.gapOpen).length, 'gap'),
+    renderOpsMetric('Sin seguimiento', profiles.filter(profile => profile.noFollowUp).length, 'operator')
+  );
+
+  controls.opsResults.replaceChildren();
+  const visibleProfiles = profiles.filter(opsVisible);
+  if (!visibleProfiles.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-history';
+    empty.textContent = 'No hay casos para este filtro.';
+    controls.opsResults.append(empty);
+    return;
+  }
+
+  visibleProfiles.forEach(profile => {
+    const row = document.createElement('div');
+    row.className = 'ops-row';
+
+    const identity = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = profile.sale.customer_name || 'Cliente sin nombre';
+    const identityMeta = document.createElement('div');
+    identityMeta.className = 'archive-meta';
+    identityMeta.textContent = [
+      profile.sale.customer_phone,
+      profile.sale.customer_email,
+      profile.sale.contract_number ? `Contrato ${profile.sale.contract_number}` : ''
+    ].filter(Boolean).join(' | ');
+    identity.append(name, identityMeta);
+
+    const vehicle = document.createElement('div');
+    const vehicleName = document.createElement('strong');
+    vehicleName.textContent = profile.sale.vehicle_description || 'Vehiculo sin completar';
+    const vehicleMeta = document.createElement('div');
+    vehicleMeta.className = 'archive-meta';
+    vehicleMeta.textContent = [
+      profile.sale.vin ? `VIN ${profile.sale.vin}` : '',
+      profile.sale.stock_number ? `Stock ${profile.sale.stock_number}` : '',
+      profile.form.gps_last_location ? `Ubicacion ${profile.form.gps_last_location}` : ''
+    ].filter(Boolean).join(' | ');
+    vehicle.append(vehicleName, vehicleMeta);
+
+    const status = document.createElement('div');
+    const headline = document.createElement('div');
+    headline.className = profile.alerts.length ? 'ops-alert' : 'ops-ok';
+    headline.textContent = profile.alerts.length ? profile.alerts.join(' | ') : 'Al dia';
+    const detail = document.createElement('div');
+    detail.className = 'archive-meta';
+    detail.textContent = [
+      profile.form.insurance_next_review_date ? `Seguro ${formatDateDisplay(profile.form.insurance_next_review_date)}` : 'Seguro sin proxima revision',
+      profile.form.gps_next_review_date ? `GPS ${formatDateDisplay(profile.form.gps_next_review_date)}` : 'GPS sin proxima revision',
+      profile.form.gap_has_coverage ? `GAP ${profile.form.gap_has_coverage}${profile.form.gap_issued_vin ? ` / VIN ${profile.form.gap_issued_vin}` : ''}` : 'GAP sin verificar',
+      profile.latest ? `Ultimo trabajo ${formatDateDisplay(profile.latest.created_at?.slice(0, 10))}` : 'Sin historial operativo'
+    ].join(' | ');
+    status.append(headline, detail);
+
+    const actions = document.createElement('div');
+    actions.className = 'archive-docs';
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'secondary';
+    open.textContent = 'Abrir';
+    open.addEventListener('click', () => openOpsSale(profile));
+    const message = document.createElement('button');
+    message.type = 'button';
+    message.className = 'secondary';
+    message.textContent = 'Mensaje';
+    message.addEventListener('click', () => copyCustomerMessage(profile).catch(error => setCloudStatus(error.message, 'error')));
+    const history = document.createElement('button');
+    history.type = 'button';
+    history.className = 'secondary';
+    history.textContent = 'Historial';
+    history.addEventListener('click', () => showOpsHistory(profile));
+    actions.append(open, history, message);
+
+    row.append(identity, vehicle, status, actions);
+    controls.opsResults.append(row);
+  });
+}
+
+async function loadOpsReport() {
+  if (!supabase || !session?.user || !controls.opsReport) return;
+  const { data: sales, error: salesError } = await supabase
+    .from('doc_sales')
+    .select('id, customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at')
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (salesError) {
+    setCloudStatus(`No se pudo cargar Control GPS / Seguro: ${salesError.message}`, 'error');
+    return;
+  }
+  const saleIds = (sales || []).map(sale => sale.id);
+  let operations = [];
+  if (saleIds.length) {
+    const { data, error } = await supabase
+      .from('doc_sale_operations')
+      .select('id, sale_id, module, event_type, status, follow_up_at, note, payload, created_by, created_at')
+      .in('sale_id', saleIds)
+      .eq('module', 'insurance_gps')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (error) {
+      if (error.code === '42P01' || /doc_sale_operations|relation/i.test(error.message || '')) {
+        setCloudStatus('Control GPS / Seguro visible. Falta activar la tabla de auditoria en Supabase para guardar historial del operador.', 'error');
+        renderOpsReport((sales || []).map(sale => buildOpsProfile(sale, [])));
+        return;
+      }
+      setCloudStatus(`No se pudo cargar historial GPS / Seguro: ${error.message}`, 'error');
+      return;
+    }
+    operations = data || [];
+  }
+  const bySale = new Map();
+  operations.forEach(operation => {
+    if (!bySale.has(operation.sale_id)) bySale.set(operation.sale_id, []);
+    bySale.get(operation.sale_id).push(operation);
+  });
+  renderOpsReport((sales || []).map(sale => buildOpsProfile(sale, bySale.get(sale.id) || [])));
+}
+
 function authHeaders() {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` };
 }
@@ -521,6 +901,7 @@ async function sendForSignature() {
     if (session?.user) {
       await loadRecentSales();
       await loadArchive();
+      await loadOpsReport();
     }
   } finally {
     controls.sendSignature.disabled = false;
@@ -555,7 +936,7 @@ function newSale() {
   setCloudStatus('Formulario limpio para una nueva venta. Completa los datos y envia al cliente cuando este listo.', 'good');
 }
 
-window.EasyCarCloud = { saveSale };
+window.EasyCarCloud = { saveSale, saveInsuranceGpsReview };
 
 if (!configured) {
   document.body.dataset.auth = 'signed-in';
@@ -584,6 +965,21 @@ if (!configured) {
   });
   controls.newSale.addEventListener('click', newSale);
   controls.sendSignature.addEventListener('click', () => sendForSignature().catch(error => setCloudStatus(error.message, 'error')));
+  const setOpsFilterFromEvent = event => {
+    const button = event.target.closest('[data-ops-filter]');
+    if (!button) return;
+    opsFilter = button.dataset.opsFilter || 'all';
+    controls.opsFilters.querySelectorAll('button').forEach(item => item.classList.toggle('active', item.dataset.opsFilter === opsFilter));
+    controls.opsSummary.querySelectorAll('[data-ops-filter]').forEach(item => item.classList.toggle('active', item.dataset.opsFilter === opsFilter));
+    loadOpsReport().catch(error => setCloudStatus(error.message, 'error'));
+  };
+  controls.opsFilters.addEventListener('click', setOpsFilterFromEvent);
+  controls.opsSummary.addEventListener('click', setOpsFilterFromEvent);
+  controls.opsSearch.addEventListener('input', () => loadOpsReport().catch(error => setCloudStatus(error.message, 'error')));
+  controls.clearOpsSearch.addEventListener('click', () => {
+    controls.opsSearch.value = '';
+    loadOpsReport().catch(error => setCloudStatus(error.message, 'error'));
+  });
 
   const { data } = await supabase.auth.getSession();
   setSessionUi(data.session);

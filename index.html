@@ -29,7 +29,7 @@
     .toolbar p { margin: 0; color: var(--muted); line-height: 1.4; }
     .deal-mode { display: grid; gap: 10px; margin: 0 0 18px; padding: 14px; border: 1px solid #c7d4e5; border-radius: 8px; background: #f8fbff; }
     .deal-mode strong { color: var(--dark); font-size: .92rem; }
-    .mode-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+    .mode-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
     .mode-tab { display: grid; gap: 5px; min-height: 74px; padding: 11px 12px; border: 2px solid #c7d4e5; border-radius: 7px; background: #fff; color: var(--dark); cursor: pointer; }
     .mode-tab input { position: absolute; opacity: 0; pointer-events: none; }
     .mode-tab span { font-weight: 900; letter-spacing: .05em; }
@@ -58,6 +58,14 @@
     body:not([data-sale-type="VOLUNTARY"]):not([data-sale-type="REPO"]) .recovery-only { display: none !important; }
     body[data-sale-type="VOLUNTARY"] .not-voluntary { display: none !important; }
     body[data-sale-type="REPO"] .not-voluntary { display: none !important; }
+    body:not([data-active-module="INSURANCE_GPS"]) .insurance-only { display: none !important; }
+    body:not([data-active-module="INSURANCE_GPS"]) .ops-report-panel { display: none !important; }
+    body[data-active-module="INSURANCE_GPS"] .sale-operation-only,
+    body[data-active-module="INSURANCE_GPS"] .not-voluntary,
+    body[data-active-module="INSURANCE_GPS"] .voluntary-only,
+    body[data-active-module="INSURANCE_GPS"] .repo-only,
+    body[data-active-module="INSURANCE_GPS"] .recovery-only,
+    body[data-active-module="INSURANCE_GPS"] .document-output { display: none !important; }
     label { display: grid; gap: 6px; color: #2f3b51; font-size: .82rem; font-weight: 700; text-transform: uppercase; }
     input, select, textarea { width: 100%; min-height: 42px; border: 1px solid #bac5d6; border-radius: 6px; padding: 10px 11px; font: inherit; background: #fffdf3; color: var(--ink); }
     input.field-error, select.field-error, textarea.field-error { border-color: var(--red); background: #fff1f3; box-shadow: 0 0 0 2px rgba(237,28,46,.12); }
@@ -102,6 +110,22 @@
     .archive-meta { color: var(--muted); line-height: 1.35; }
     .archive-docs { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 7px; }
     .archive-docs button { min-height: 32px; padding: 0 10px; }
+    .ops-report-panel { grid-column: 1 / -1; border-top: 1px solid #d5e1f1; padding-top: 12px; display: grid; gap: 10px; }
+    .ops-report-panel h3 { margin: 0; font-size: .9rem; color: var(--dark); }
+    .ops-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+    .ops-metric { min-height: 64px; padding: 10px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; text-align: left; cursor: pointer; }
+    .ops-metric.active { border-color: var(--blue); background: #eaf2ff; box-shadow: inset 4px 0 0 var(--blue); }
+    .ops-metric strong { display: block; color: var(--dark); font-size: 1.25rem; }
+    .ops-metric span { display: block; color: var(--muted); font-size: .74rem; font-weight: 800; text-transform: uppercase; }
+    .ops-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+    .ops-filters button { min-height: 34px; padding: 0 10px; }
+    .ops-filters button.active { background: var(--blue); color: #fff; }
+    .ops-results { display: grid; gap: 8px; }
+    .ops-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .95fr) minmax(0, 1.1fr) auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; font-size: .82rem; }
+    .ops-row strong { color: var(--dark); }
+    .ops-alert { color: #9d1d28; font-weight: 900; }
+    .ops-ok { color: #087443; font-weight: 900; }
+    .ops-warn { color: #9a5a00; font-weight: 900; }
     .admin-panel { grid-column: 1 / -1; border-top: 1px solid #d5e1f1; padding-top: 12px; display: grid; gap: 10px; }
     .admin-panel h3 { margin: 0; font-size: .9rem; color: var(--dark); }
     .admin-grid { display: grid; grid-template-columns: 1.15fr .9fr .7fr .7fr auto auto; gap: 8px; align-items: end; }
@@ -146,6 +170,8 @@
     .bilingual-title span { display: block; }
     .bilingual-title span + span { border-left: 1px solid var(--line); padding-left: 16px; }
     .schedule-hidden { display: none !important; }
+    .ops-action { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 14px; border: 1px solid #b9cbe4; border-left: 5px solid var(--blue); border-radius: 6px; background: #f5f9ff; }
+    .ops-action .status { margin: 0; flex: 1 1 260px; }
     @media (max-width: 760px) {
       .brand { align-items: flex-start; flex-direction: column; }
       .grid { grid-template-columns: 1fr; }
@@ -168,7 +194,11 @@
       .cloud-auth, .cloud-user, .workflow-actions { align-items: stretch; flex-direction: column; }
       .cloud-auth label { min-width: 0; max-width: none; width: 100%; }
       .cloud-sale-row { grid-template-columns: 1fr; }
+      .ops-summary { grid-template-columns: 1fr 1fr; }
+      .ops-row { grid-template-columns: 1fr; }
       .admin-grid, .admin-user-row { grid-template-columns: 1fr; }
+      .ops-action { align-items: stretch; flex-direction: column; }
+      .ops-action button { width: 100%; }
       .doc-letterhead { grid-template-columns: 130px 1fr; }
       .doc-letterhead img { width: 130px; }
     }
@@ -336,7 +366,7 @@
       </section>
       <div class="toolbar private-workspace">
         <p>Version directa para ventas. Elige el tipo de venta, llena una sola pantalla y el sistema prepara solo los documentos necesarios.</p>
-        <button type="button" onclick="window.print()">Imprimir / guardar PDF</button>
+        <button type="button" class="sale-operation-only" onclick="window.print()">Imprimir / guardar PDF</button>
       </div>
       <div class="deal-mode private-workspace" aria-label="Tipo de venta">
         <strong>Tipo de venta</strong>
@@ -358,18 +388,46 @@
           </label>
           <label class="mode-tab">
             <input type="radio" name="sale_type_choice" id="sale_type_repo" value="REPO">
-            <span>REPO</span>
+            <span>REPOSICION</span>
             <small>Reposesion, aviso de venta privada, payoff y deficiencia.</small>
           </label>
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_module_insurance" value="INSURANCE_GPS">
+            <span>GPS Y SEGURO</span>
+            <small>Poliza, GPS, GAP, siniestro, ubicacion y seguimiento.</small>
+          </label>
           <label class="mode-tab disabled">
-            <input type="radio" name="sale_type_choice" id="sale_type_newdoc" value="NEWDOC" disabled>
-            <span>NUEVO DOCUMENTO</span>
-            <small>Reservado para el proximo formato.</small>
+            <input type="radio" name="sale_type_choice" id="sale_module_interview" value="INTERVIEW" disabled>
+            <span>ENTREVISTA</span>
+            <small>Reservado para llamada postventa y encuesta.</small>
+          </label>
+          <label class="mode-tab disabled">
+            <input type="radio" name="sale_type_choice" id="sale_module_mechanical" value="MECHANICAL" disabled>
+            <span>MECANICA</span>
+            <small>Reservado para reclamos y seguimiento mecanico.</small>
           </label>
         </div>
         <input type="hidden" id="sale_type" value="BHPH">
+        <input type="hidden" id="active_module" value="SALE">
         <p class="mode-summary" id="modeSummary">BHPH: se generan todos los documentos del paquete.</p>
       </div>
+      <section class="ops-report-panel private-workspace" id="opsReportPanel" hidden>
+        <h3>Control GPS / Seguro</h3>
+        <div class="ops-summary" id="opsSummary"></div>
+        <div class="ops-filters" id="opsFilters" aria-label="Filtros de control GPS y seguro">
+          <button type="button" class="secondary active" data-ops-filter="all">Todos</button>
+          <button type="button" class="secondary" data-ops-filter="insurance">Seguro</button>
+          <button type="button" class="secondary" data-ops-filter="gps">GPS</button>
+          <button type="button" class="secondary" data-ops-filter="gap">GAP / Siniestro</button>
+          <button type="button" class="secondary" data-ops-filter="recovery">Repo / Entrega</button>
+          <button type="button" class="secondary" data-ops-filter="operator">Sin seguimiento</button>
+        </div>
+        <div class="archive-search">
+          <label>Buscar cliente, VIN, stock, contrato, email o telefono <input id="opsSearch" autocomplete="off"></label>
+          <button type="button" class="secondary" id="clearOpsSearch">Limpiar</button>
+        </div>
+        <div class="ops-results" id="opsResults"></div>
+      </section>
       <form id="saleForm" class="grid private-workspace">
         <div class="section-title">Cliente</div>
         <div class="name-grid">
@@ -411,8 +469,203 @@
         <label>Contrato <input id="contract_number"></label>
         <label>Fecha de venta <input id="transaction_date" type="date" readonly></label>
 
-        <div class="section-title">Venta y pago</div>
-        <label>Vendedor <input id="sales_rep_name"></label>
+        <div class="section-title insurance-only">Seguros / GPS</div>
+        <div class="storage-note insurance-only">Protocolo operativo: al cargar el carro se crea la primera revision. Seguro se vuelve a revisar cada 14 dias y GPS cada 10 dias. Cada registro central conserva usuario, dia y hora.</div>
+        <label class="insurance-only">Fecha carga del carro <input id="vehicle_loaded_date" type="date"></label>
+        <label class="insurance-only">Primera revision seguro <input id="insurance_first_review_date" type="date"></label>
+        <label class="insurance-only">Primera revision GPS <input id="gps_first_review_date" type="date"></label>
+        <label class="insurance-only">Verificacion poliza
+          <select id="insurance_verification_mode">
+            <option value="Manual">Manual</option>
+            <option value="API pendiente">API pendiente</option>
+            <option value="API activa">API activa</option>
+          </select>
+        </label>
+        <label class="insurance-only">Proveedor API seguro <input id="insurance_api_provider" placeholder="Ej. Progressive, Geico, agency portal"></label>
+        <label class="insurance-only">Referencia API / cuenta <input id="insurance_api_account_ref"></label>
+        <label class="insurance-only">Estado automatizacion
+          <select id="insurance_api_status">
+            <option value="No configurada">No configurada</option>
+            <option value="Pendiente credenciales">Pendiente credenciales</option>
+            <option value="En prueba">En prueba</option>
+            <option value="Activa">Activa</option>
+            <option value="Fallando">Fallando</option>
+          </select>
+        </label>
+        <div class="storage-note insurance-only" id="insuranceGpsProtocolStatus">Proxima accion: registra la primera revision de seguro y GPS.</div>
+        <label class="insurance-only">Proveedor seguro <input id="insurance_provider"></label>
+        <label class="insurance-only">Numero de poliza <input id="insurance_policy_number"></label>
+        <label class="insurance-only">Telefono agencia / seguro <input id="insurance_agency_phone"></label>
+        <label class="insurance-only">Estatus poliza
+          <select id="insurance_status">
+            <option value=""></option>
+            <option value="Activa">Activa</option>
+            <option value="Pendiente">Pendiente</option>
+            <option value="Cancelada">Cancelada</option>
+            <option value="Vencida">Vencida</option>
+            <option value="No verificable">No verificable</option>
+          </select>
+        </label>
+        <label class="insurance-only">Fecha verificacion poliza <input id="insurance_verified_date" type="date"></label>
+        <label class="insurance-only">Proxima revision poliza <input id="insurance_next_review_date" type="date" readonly></label>
+        <label class="insurance-only">Fecha caduca poliza <input id="insurance_expiration_date" type="date"></label>
+        <label class="insurance-only">Poliza pagada al dia
+          <select id="insurance_payments_current">
+            <option value=""></option>
+            <option value="Si">Si</option>
+            <option value="No">No</option>
+            <option value="No confirmado">No confirmado</option>
+          </select>
+        </label>
+        <label class="insurance-only">Comprehensive
+          <select id="insurance_comprehensive">
+            <option value=""></option>
+            <option value="Si">Si</option>
+            <option value="No">No</option>
+            <option value="No confirmado">No confirmado</option>
+          </select>
+        </label>
+        <label class="insurance-only">Collision
+          <select id="insurance_collision">
+            <option value=""></option>
+            <option value="Si">Si</option>
+            <option value="No">No</option>
+            <option value="No confirmado">No confirmado</option>
+          </select>
+        </label>
+        <label class="insurance-only">EasyCar como lien holder
+          <select id="insurance_lienholder">
+            <option value=""></option>
+            <option value="Si">Si</option>
+            <option value="No">No</option>
+            <option value="No confirmado">No confirmado</option>
+          </select>
+        </label>
+        <label class="insurance-only">GPS IMEI / numero <input id="gps_imei"></label>
+        <label class="insurance-only">Proveedor GPS <input id="gps_provider"></label>
+        <label class="insurance-only">GPS API proveedor 1 <input id="gps_api_provider_1_name" placeholder="Nombre del proveedor"></label>
+        <label class="insurance-only">GPS API proveedor 1 URL <input id="gps_api_provider_1_url" placeholder="Portal o endpoint API"></label>
+        <label class="insurance-only">GPS API proveedor 1 referencia <input id="gps_api_provider_1_ref" placeholder="Cuenta, token ref. o credencial interna"></label>
+        <label class="insurance-only">GPS API proveedor 1 estado
+          <select id="gps_api_provider_1_status">
+            <option value="No configurada">No configurada</option>
+            <option value="Pendiente credenciales">Pendiente credenciales</option>
+            <option value="En prueba">En prueba</option>
+            <option value="Activa">Activa</option>
+            <option value="Fallando">Fallando</option>
+          </select>
+        </label>
+        <label class="insurance-only">GPS API proveedor 2 <input id="gps_api_provider_2_name" placeholder="Nombre del proveedor"></label>
+        <label class="insurance-only">GPS API proveedor 2 URL <input id="gps_api_provider_2_url" placeholder="Portal o endpoint API"></label>
+        <label class="insurance-only">GPS API proveedor 2 referencia <input id="gps_api_provider_2_ref" placeholder="Cuenta, token ref. o credencial interna"></label>
+        <label class="insurance-only">GPS API proveedor 2 estado
+          <select id="gps_api_provider_2_status">
+            <option value="No configurada">No configurada</option>
+            <option value="Pendiente credenciales">Pendiente credenciales</option>
+            <option value="En prueba">En prueba</option>
+            <option value="Activa">Activa</option>
+            <option value="Fallando">Fallando</option>
+          </select>
+        </label>
+        <label class="insurance-only">Estatus GPS
+          <select id="gps_device_status">
+            <option value=""></option>
+            <option value="Activo">Activo</option>
+            <option value="Desconectado">Desconectado</option>
+            <option value="Sin senal">Sin senal</option>
+            <option value="Removido / alterado">Removido / alterado</option>
+            <option value="No localizado">No localizado</option>
+          </select>
+        </label>
+        <label class="insurance-only">Conectado a bateria
+          <select id="gps_battery_connected">
+            <option value=""></option>
+            <option value="Si">Si</option>
+            <option value="No">No</option>
+            <option value="No confirmado">No confirmado</option>
+          </select>
+        </label>
+        <label class="insurance-only">Millas al revisar <input id="gps_last_mileage"></label>
+        <label class="insurance-only">Ultima ubicacion <input id="gps_last_location"></label>
+        <label class="insurance-only">Ultima senal GPS <input id="gps_last_seen_at" type="datetime-local"></label>
+        <label class="insurance-only">Proxima revision GPS <input id="gps_next_review_date" type="date" readonly></label>
+        <label class="insurance-only">Uso mensual
+          <select id="gps_monthly_miles_status">
+            <option value=""></option>
+            <option value="Dentro de limite">Dentro de limite</option>
+            <option value="Sobre 1500 millas">Sobre 1500 millas</option>
+            <option value="No calculado">No calculado</option>
+          </select>
+        </label>
+        <label class="insurance-only">Evento relacionado
+          <select id="recovery_event_type">
+            <option value=""></option>
+            <option value="Ninguno">Ninguno</option>
+            <option value="Repo">Repo</option>
+            <option value="Entrega voluntaria">Entrega voluntaria</option>
+            <option value="Siniestro">Siniestro</option>
+          </select>
+        </label>
+        <label class="insurance-only">Fecha del evento <input id="recovery_event_date" type="date"></label>
+        <label class="insurance-only">Poliza activa ese dia
+          <select id="recovery_policy_active_on_event">
+            <option value=""></option>
+            <option value="Si">Si</option>
+            <option value="No">No</option>
+            <option value="No confirmado">No confirmado</option>
+          </select>
+        </label>
+        <label class="insurance-only">Tiene GAP
+          <select id="gap_has_coverage">
+            <option value=""></option>
+            <option value="Si">Si</option>
+            <option value="No">No</option>
+            <option value="No confirmado">No confirmado</option>
+          </select>
+        </label>
+        <label class="insurance-only">Proveedor GAP <input id="gap_provider"></label>
+        <label class="insurance-only">Contrato / certificado GAP <input id="gap_contract_number"></label>
+        <label class="insurance-only">VIN emitido en GAP <input id="gap_issued_vin" maxlength="17"></label>
+        <label class="insurance-only">VIN GAP coincide
+          <select id="gap_vin_match">
+            <option value=""></option>
+            <option value="Si">Si</option>
+            <option value="No">No</option>
+            <option value="No confirmado">No confirmado</option>
+          </select>
+        </label>
+        <label class="insurance-only">Fecha emision GAP <input id="gap_issue_date" type="date"></label>
+        <label class="insurance-only">Estado contrato GAP
+          <select id="gap_contract_status">
+            <option value=""></option>
+            <option value="Activo">Activo</option>
+            <option value="Cancelado">Cancelado</option>
+            <option value="No emitido">No emitido</option>
+            <option value="No verificable">No verificable</option>
+          </select>
+        </label>
+        <label class="insurance-only">GAP / siniestro
+          <select id="gap_claim_status">
+            <option value=""></option>
+            <option value="Sin siniestro">Sin siniestro</option>
+            <option value="Seguro abierto">Seguro abierto</option>
+            <option value="Esperando pago seguro">Esperando pago seguro</option>
+            <option value="GAP abierto">GAP abierto</option>
+            <option value="Esperando pago GAP">Esperando pago GAP</option>
+            <option value="Cerrado">Cerrado</option>
+          </select>
+        </label>
+        <label class="insurance-only">Numero reclamo seguro <input id="insurance_claim_number"></label>
+        <label class="insurance-only">Fecha apertura GAP <input id="gap_opened_date" type="date"></label>
+        <label class="full insurance-only">Documentos faltantes GAP / siniestro <textarea id="gap_missing_documents"></textarea></label>
+        <label class="full insurance-only">Notas Seguros / GPS / GAP <textarea id="insurance_gps_notes"></textarea></label>
+        <div class="ops-action insurance-only">
+          <button type="button" id="saveInsuranceGpsReview">Registrar revision Seguros / GPS</button>
+          <div id="insuranceGpsStatus" class="status">Cada registro queda asociado al expediente, usuario, dia y hora cuando la base de auditoria este activa.</div>
+        </div>
+
+        <div class="section-title sale-operation-only">Venta y pago</div>
+        <label class="sale-operation-only">Vendedor <input id="sales_rep_name"></label>
         <label class="not-voluntary">GPS <select id="gps_status"><option value=""></option><option>Confirmado</option><option>No confirmado</option></select></label>
         <label class="not-voluntary">Vehicle History / CARFAX <select id="vehicle_history_decision"><option value=""></option><option value="reviewed">Cliente reviso reporte disponible</option><option value="declined">Cliente rechazo revisar reporte</option><option value="request">Cliente puede solicitar reporte en 5 dias</option></select></label>
         <label class="not-voluntary">Horario llamadas <select id="preferred_call_hours"><option value=""></option><option value="8am-12pm">8am-12pm</option><option value="12pm-5pm">12pm-5pm</option><option value="5pm-9pm">5pm-9pm</option></select></label>
@@ -495,22 +748,22 @@
           <div class="num" data-payment-row="14">14</div><label data-payment-row="14">Pago 14 fecha <input id="pickup_date_14" readonly></label><label data-payment-row="14">Pago 14 pago <input id="pickup_amount_14" readonly></label><label data-payment-row="14">Pago 14 interes <input id="pickup_interest_14" readonly></label><label data-payment-row="14">Pago 14 capital <input id="pickup_principal_14" readonly></label><label data-payment-row="14">Pago 14 saldo <input id="pickup_balance_14" readonly></label>
         </div>
 
-        <div class="actions full">
+        <div class="actions full sale-operation-only">
           <button type="button" id="refreshDocs">Actualizar documentos</button>
           <button type="button" id="saveSale">Guardar venta</button>
           <div id="saveStatus" class="status">El guardado local queda como respaldo. Al entrar como vendedor, tambien se guarda en Supabase.</div>
         </div>
-        <div class="storage-note">Supabase es el expediente central: guarda clientes, ventas y estado de firma. El guardado local del navegador queda solo como respaldo temporal.</div>
-        <section class="sales-history">
+        <div class="storage-note sale-operation-only">Supabase es el expediente central: guarda clientes, ventas y estado de firma. El guardado local del navegador queda solo como respaldo temporal.</div>
+        <section class="sales-history sale-operation-only">
           <h3>Ventas guardadas recientemente</h3>
           <div id="salesList" class="sales-list"></div>
         </section>
       </form>
     </section>
 
-    <p class="print-note private-workspace"><strong>Documentos generados abajo desde los originales.</strong> Revisa cada documento antes de imprimir. Los documentos largos pueden ocupar mas de una pagina para mantener buena lectura.</p>
-    <nav class="doc-nav private-workspace" id="docNav"></nav>
-    <section id="docs" class="docs-wrap private-workspace"></section>
+    <p class="print-note private-workspace document-output"><strong>Documentos generados abajo desde los originales.</strong> Revisa cada documento antes de imprimir. Los documentos largos pueden ocupar mas de una pagina para mantener buena lectura.</p>
+    <nav class="doc-nav private-workspace document-output" id="docNav"></nav>
+    <section id="docs" class="docs-wrap private-workspace document-output"></section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -838,13 +1091,15 @@
       BHPH: ORIGINAL_DOCS.map(doc => doc.key),
       BANCO: ['pickup', 'card'],
       VOLUNTARY: ['voluntary_notice', 'voluntary_condition'],
-      REPO: ['repo_notice', 'repo_sale_notice']
+      REPO: ['repo_notice', 'repo_sale_notice'],
+      INSURANCE_GPS: []
     };
     const MODE_COPY = {
       BHPH: 'BHPH: se generan todos los documentos del paquete.',
       BANCO: 'BANCO: se generan solo Financiamiento de inicial y Credit Card Authorization.',
       VOLUNTARY: 'ENTREGA VOLUNTARIA: identifica cliente, vehiculo, fechas, cuotas, payoff, condicion y 4 fotos.',
-      REPO: 'REPO: genera aviso de reposesion y aviso de venta privada con fecha minima de 10 dias.'
+      REPO: 'REPOSICION: genera aviso de reposesion y aviso de venta privada con fecha minima de 10 dias.',
+      INSURANCE_GPS: 'GPS Y SEGURO: usa el mismo cliente, VIN y vehiculo del expediente para controlar poliza, GPS, GAP y siniestros.'
     };
     const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO';
     const SUPABASE_CONFIG = {
@@ -853,9 +1108,13 @@
     };
     const pickupIds = Array.from({ length: 14 }, (_, i) => i + 1).flatMap(i => [`pickup_date_${i}`, `pickup_amount_${i}`, `pickup_interest_${i}`, `pickup_principal_${i}`, `pickup_balance_${i}`]);
     const ids = [
-      'sale_type',
+      'sale_type','active_module',
       'first_name','middle_name','last_name','second_last_name','co_buyer_name','address','city','state','zip_code','customer_email','phone','alternate_phone','driver_license',
       'vin','vehicle_year','vehicle_make','vehicle_model','vehicle_mileage','vehicle_color','vehicle_plate','stock_number','contract_number','transaction_date','sales_rep_name','gps_status','vehicle_history_decision',
+      'vehicle_loaded_date','insurance_first_review_date','gps_first_review_date','insurance_verification_mode','insurance_api_provider','insurance_api_account_ref','insurance_api_status',
+      'insurance_provider','insurance_policy_number','insurance_agency_phone','insurance_status','insurance_verified_date','insurance_next_review_date','insurance_expiration_date','insurance_payments_current','insurance_comprehensive','insurance_collision','insurance_lienholder',
+      'gps_imei','gps_provider','gps_api_provider_1_name','gps_api_provider_1_url','gps_api_provider_1_ref','gps_api_provider_1_status','gps_api_provider_2_name','gps_api_provider_2_url','gps_api_provider_2_ref','gps_api_provider_2_status','gps_device_status','gps_battery_connected','gps_last_mileage','gps_last_location','gps_last_seen_at','gps_next_review_date','gps_monthly_miles_status',
+      'recovery_event_type','recovery_event_date','recovery_policy_active_on_event','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_opened_date','gap_missing_documents','insurance_gps_notes',
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
       'conditional_delivery_date','conditional_deadline',
       'surrender_date','surrender_time','surrender_location','account_number','surrender_monthly_payment','surrender_paid_installments','surrender_owed_installments','surrender_amount_owed','surrender_payoff','surrender_days_sold','surrender_keys','surrender_title','surrender_registration','surrender_exterior','surrender_mechanical','surrender_personal_property','surrender_photo_notes',
@@ -867,13 +1126,24 @@
     const val = id => ($(id)?.value || '').trim();
     const allDocs = () => [...ORIGINAL_DOCS, ...VOLUNTARY_DOCS, ...REPO_DOCS];
     const currentSaleType = () => (val('sale_type') === 'REPO' ? 'REPO' : val('sale_type') === 'VOLUNTARY' ? 'VOLUNTARY' : val('sale_type') === 'BANCO' ? 'BANCO' : 'BHPH');
+    const activeModule = () => val('active_module') || 'SALE';
     function visibleDocs() {
-      const order = DOC_SETS[currentSaleType()] || DOC_SETS.BHPH;
+      const mode = activeModule() === 'INSURANCE_GPS' ? 'INSURANCE_GPS' : currentSaleType();
+      const order = DOC_SETS[mode] || DOC_SETS.BHPH;
       return order.map(key => allDocs().find(doc => doc.key === key)).filter(Boolean);
+    }
+    function setActiveModule(module) {
+      const normalized = module === 'INSURANCE_GPS' ? 'INSURANCE_GPS' : 'SALE';
+      if ($('active_module')) $('active_module').value = normalized;
+      document.body.dataset.activeModule = normalized;
+      if (normalized === 'INSURANCE_GPS' && $('sale_module_insurance')) $('sale_module_insurance').checked = true;
+      if ($('modeSummary')) $('modeSummary').textContent = MODE_COPY[normalized === 'INSURANCE_GPS' ? 'INSURANCE_GPS' : currentSaleType()];
+      renderDocs();
     }
     function setSaleType(type) {
       const normalized = type === 'REPO' ? 'REPO' : type === 'VOLUNTARY' ? 'VOLUNTARY' : type === 'BANCO' ? 'BANCO' : 'BHPH';
       $('sale_type').value = normalized;
+      if ($('active_module')) $('active_module').value = 'SALE';
       const bank = $('sale_type_bank');
       const bhph = $('sale_type_bhph');
       const voluntary = $('sale_type_voluntary');
@@ -883,6 +1153,7 @@
       if (voluntary) voluntary.checked = normalized === 'VOLUNTARY';
       if (repo) repo.checked = normalized === 'REPO';
       document.body.dataset.saleType = normalized;
+      document.body.dataset.activeModule = 'SALE';
       if ($('modeSummary')) $('modeSummary').textContent = MODE_COPY[normalized];
       renderDocs();
     }
@@ -912,6 +1183,11 @@
       if ($('conditional_delivery_date')) $('conditional_delivery_date').value = saleDate;
       if ($('surrender_date') && !$('surrender_date').value) $('surrender_date').value = todayInputValue();
       if ($('repo_date') && !$('repo_date').value) $('repo_date').value = todayInputValue();
+      if ($('vehicle_loaded_date') && !$('vehicle_loaded_date').value) $('vehicle_loaded_date').value = saleDate;
+      if ($('insurance_first_review_date') && !$('insurance_first_review_date').value) $('insurance_first_review_date').value = todayInputValue();
+      if ($('gps_first_review_date') && !$('gps_first_review_date').value) $('gps_first_review_date').value = todayInputValue();
+      if ($('insurance_verification_mode') && !$('insurance_verification_mode').value) $('insurance_verification_mode').value = 'Manual';
+      if ($('insurance_api_status') && !$('insurance_api_status').value) $('insurance_api_status').value = 'No configurada';
       syncPickupStartDate();
     }
     function dateValue(id) {
@@ -929,6 +1205,36 @@
     }
     function addDays(date, days) {
       return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+    }
+    function inputDateFrom(date) {
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+    function normalizeVin(value) {
+      return String(value || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    }
+    function updateGapVinMatch() {
+      const soldVin = normalizeVin(val('vin'));
+      const gapVin = normalizeVin(val('gap_issued_vin'));
+      if ($('gap_issued_vin')) $('gap_issued_vin').value = gapVin;
+      if (!$('gap_vin_match') || !gapVin) return;
+      $('gap_vin_match').value = soldVin && soldVin === gapVin ? 'Si' : soldVin ? 'No' : 'No confirmado';
+    }
+    function updateInsuranceGpsSchedule() {
+      const insuranceBaseRaw = val('insurance_verified_date') || val('insurance_first_review_date') || val('vehicle_loaded_date') || val('transaction_date');
+      const gpsBaseRaw = val('gps_last_seen_at') ? val('gps_last_seen_at').slice(0, 10) : (val('gps_first_review_date') || val('vehicle_loaded_date') || val('transaction_date'));
+      const insuranceBase = insuranceBaseRaw ? new Date(`${insuranceBaseRaw}T00:00:00`) : null;
+      const gpsBase = gpsBaseRaw ? new Date(`${gpsBaseRaw}T00:00:00`) : null;
+      if ($('insurance_next_review_date')) $('insurance_next_review_date').value = insuranceBase ? inputDateFrom(addDays(insuranceBase, 14)) : '';
+      if ($('gps_next_review_date')) $('gps_next_review_date').value = gpsBase ? inputDateFrom(addDays(gpsBase, 10)) : '';
+      const status = $('insuranceGpsProtocolStatus');
+      if (status) {
+        const insuranceNext = val('insurance_next_review_date') || 'pendiente';
+        const gpsNext = val('gps_next_review_date') || 'pendiente';
+        const mode = val('insurance_verification_mode') || 'Manual';
+        const api = val('insurance_api_status') || 'No configurada';
+        status.textContent = `Protocolo: seguro cada 14 dias, GPS cada 10 dias. Proxima poliza: ${insuranceNext}. Proximo GPS: ${gpsNext}. Verificacion: ${mode}. API: ${api}.`;
+      }
     }
     function parseDateInput(id) {
       const raw = val(id);
@@ -1343,7 +1649,7 @@
       calculatePickupSchedule();
       updateRepoCalculations();
       const docsToRender = visibleDocs();
-      if ($('modeSummary')) $('modeSummary').textContent = MODE_COPY[currentSaleType()];
+      if ($('modeSummary')) $('modeSummary').textContent = MODE_COPY[activeModule() === 'INSURANCE_GPS' ? 'INSURANCE_GPS' : currentSaleType()];
       document.getElementById('docNav').innerHTML = docsToRender.map((doc, i) => `<a href="#doc-${doc.key}">${i + 1}. ${DOC_TITLES[doc.key]}</a>`).join('');
       document.getElementById('docs').innerHTML = docsToRender.map((doc, i) => {
         let firstParagraph = true;
@@ -1519,6 +1825,7 @@
     }
     function collectFormData() {
       ensureDefaultDates();
+      updateInsuranceGpsSchedule();
       calculateConditionalDeadline();
       calculatePickupSchedule();
       updateRepoCalculations();
@@ -1572,6 +1879,12 @@
       status.textContent = message;
       status.className = `status ${className}`.trim();
     }
+    function setInsuranceGpsStatus(message, className = '') {
+      const status = $('insuranceGpsStatus');
+      if (!status) return;
+      status.textContent = message;
+      status.className = `status ${className}`.trim();
+    }
     async function saveSale() {
       const button = $('saveSale');
       if (button) button.disabled = true;
@@ -1597,14 +1910,37 @@
         if (button) button.disabled = false;
       }
     }
+    async function saveInsuranceGpsReview() {
+      const button = $('saveInsuranceGpsReview');
+      if (button) button.disabled = true;
+      setInsuranceGpsStatus('Registrando revision...', '');
+      try {
+        const formData = collectFormData();
+        const cloudResult = window.EasyCarCloud ? await window.EasyCarCloud.saveInsuranceGpsReview(formData) : null;
+        if (!cloudResult) {
+          await saveSale();
+          setInsuranceGpsStatus('Revision guardada en la venta local. Para auditoria central debes entrar con usuario autorizado.', 'warn');
+          return;
+        }
+        setInsuranceGpsStatus(`Revision registrada en expediente central. Evento: ${cloudResult.id.slice(0, 8)}`, 'good');
+      } catch (error) {
+        setInsuranceGpsStatus(`No se pudo registrar la revision central: ${error.message || 'revisa Supabase'}`, 'warn');
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
     ids.forEach(id => $(id)?.addEventListener('input', () => {
       if (id === 'transaction_date') syncSaleDates();
+      if (id === 'vehicle_loaded_date' || id.startsWith('insurance_') || id.startsWith('gps_')) updateInsuranceGpsSchedule();
+      if (id === 'vin' || id.startsWith('gap_')) updateGapVinMatch();
       if (id.startsWith('surrender_')) updateSurrenderCalculations();
       if (id.startsWith('repo_')) updateRepoCalculations();
       renderDocs();
     }));
     ids.forEach(id => $(id)?.addEventListener('change', () => {
       if (id === 'transaction_date') syncSaleDates();
+      if (id === 'vehicle_loaded_date' || id.startsWith('insurance_') || id.startsWith('gps_')) updateInsuranceGpsSchedule();
+      if (id === 'vin' || id.startsWith('gap_')) updateGapVinMatch();
       if (id.startsWith('surrender_')) updateSurrenderCalculations();
       if (id.startsWith('repo_')) updateRepoCalculations();
       renderDocs();
@@ -1616,20 +1952,26 @@
     $('refreshDocs').addEventListener('click', renderDocs);
     $('decodeVin').addEventListener('click', decodeVin);
     $('saveSale').addEventListener('click', saveSale);
+    $('saveInsuranceGpsReview').addEventListener('click', saveInsuranceGpsReview);
     $('sale_type_bhph').addEventListener('change', () => setSaleType('BHPH'));
     $('sale_type_bank').addEventListener('change', () => setSaleType('BANCO'));
     $('sale_type_voluntary').addEventListener('change', () => setSaleType('VOLUNTARY'));
     $('sale_type_repo').addEventListener('change', () => setSaleType('REPO'));
+    $('sale_module_insurance').addEventListener('change', () => setActiveModule('INSURANCE_GPS'));
     $('salesList').addEventListener('click', event => {
       const button = event.target.closest('[data-load-sale]');
       if (button) loadLocalSale(button.dataset.loadSale);
     });
     renderSalesHistory();
+    setSaleType(currentSaleType());
     ensureDefaultDates();
+    updateInsuranceGpsSchedule();
+    updateGapVinMatch();
     renderDocs();
     window.EasyCarApp = {
       collectFormData,
       renderDocs,
+      setActiveModule,
       setSaveStatus,
       loadFormData(formData) {
         Object.entries(formData || {}).forEach(([fieldId, value]) => {
@@ -1637,6 +1979,7 @@
         });
         setSaleType(formData?.sale_type);
         ensureDefaultDates();
+        updateGapVinMatch();
         renderDocs();
       },
       clearForm() {
@@ -1651,6 +1994,8 @@
         if ($('surrender_exterior')) $('surrender_exterior').value = 'No Visible Damage';
         if ($('surrender_mechanical')) $('surrender_mechanical').value = 'Starts';
         ensureDefaultDates();
+        updateInsuranceGpsSchedule();
+        updateGapVinMatch();
         renderDocs();
       },
       supabaseConfig: SUPABASE_CONFIG
