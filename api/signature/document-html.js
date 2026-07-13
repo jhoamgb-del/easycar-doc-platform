@@ -45,6 +45,7 @@ const DOC_TITLES = {
   conditional: 'Conditional Delivery',
   communication: 'Communication Authorization',
   creditapp: 'Credit Application',
+  w9: 'Substitute Form W-9',
   voluntary_notice: 'Voluntary Return Agreement',
   voluntary_condition: 'Vehicle Condition & Photos',
   repo_notice: 'Repossession Notice',
@@ -525,6 +526,14 @@ function signatureField(name, required = true) {
   return `<signature-field name="${esc(name)}" role="Customer" required="${required ? 'true' : 'false'}" format="typed" style="width: 180px; height: 34px; display: inline-block;"></signature-field>`;
 }
 
+function docusealFieldMarkup(text) {
+  return String(text || '')
+    .replace(/\[\[TEXT_FIELD:([^:\]]+):(\d+)\]\]/g, (_, name, width) => `<text-field name="${esc(name)}" role="Customer" required="true" style="width: ${Number(width) || 180}px; height: 22px; display: inline-block;"></text-field>`)
+    .replace(/\[\[SELECT_FIELD:([^:\]]+):([^:\]]+):(\d+)\]\]/g, (_, name, options, width) => `<select-field name="${esc(name)}" role="Customer" required="true" options="${esc(options)}" style="width: ${Number(width) || 180}px; height: 24px; display: inline-block;"></select-field>`)
+    .replace(/\[\[SIGNATURE_FIELD:([^:\]]+):(\d+)\]\]/g, (_, name, width) => `<signature-field name="${esc(name)}" role="Customer" required="true" format="typed" style="width: ${Number(width) || 180}px; height: 34px; display: inline-block;"></signature-field>`)
+    .replace(/\[\[DATE_FIELD:([^:\]]+):(\d+)\]\]/g, (_, name, width) => `<date-field name="${esc(name)}" role="Customer" required="true" style="width: ${Number(width) || 120}px; height: 22px; display: inline-block;"></date-field>`);
+}
+
 function signatureLabel(label) {
   const rawLabel = String(label || '').toUpperCase();
   if (/DEALER REPRESENTATIVE|POR EASYCAR/.test(rawLabel)) return 'DEALER REPRESENTATIVE / POR EASYCAR LLC';
@@ -561,13 +570,13 @@ function renderSignatureTable(form, rows, doc) {
 function renderTable(form, rows, doc, forceSignature = false) {
   const joined = rows.flat().join(' ');
   const compactEnough = joined.length < 1000 && rows.length <= 4;
-  const signatureLike = forceSignature || (compactEnough && /(CUSTOMER|CLIENTE|BUYER|COMPRADOR|CARDHOLDER|BORROWER|DEUDOR|EASYCAR|DEALER|REP)/i.test(joined) && /(\bSIGNATURE\b|\bFIRMA(?:S)?\b|X _)/i.test(joined));
+  const signatureLike = forceSignature || (!joined.includes('[[SIGNATURE_FIELD:') && compactEnough && /(CUSTOMER|CLIENTE|BUYER|COMPRADOR|CARDHOLDER|BORROWER|DEUDOR|EASYCAR|DEALER|REP)/i.test(joined) && /(\bSIGNATURE\b|\bFIRMA(?:S)?\b|X _)/i.test(joined));
   if (signatureLike) return renderSignatureTable(form, rows, doc);
 
   const isPaymentSchedule = rows[0]?.[0] === '#';
   const paymentCount = Number(raw(form, 'pickup_payment_count')) || 10;
   const visibleRows = isPaymentSchedule ? rows.filter((row, index) => index === 0 || Number(row[0]) <= paymentCount) : rows;
-  return `<table class="${tableClass(visibleRows)}"><tbody>${visibleRows.map(row => `<tr>${row.map(cell => `<td>${esc(fillText(form, cell))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  return `<table class="${tableClass(visibleRows)}"><tbody>${visibleRows.map(row => `<tr>${row.map(cell => `<td>${docusealFieldMarkup(esc(fillText(form, cell)))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
 function renderDoc(form, doc, index, total) {
