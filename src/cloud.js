@@ -26,6 +26,7 @@ const controls = {
   archive: byId('archivePanel'),
   archiveSearch: byId('archiveSearch'),
   searchArchive: byId('searchArchive'),
+  exportCustomers: byId('exportCustomersCsv'),
   archiveResults: byId('archiveResults'),
   importPanel: byId('importPanel'),
   importFile: byId('bulkImportFile'),
@@ -322,6 +323,8 @@ const importAliases = {
   stock_number: ['stock', 'stocknumber'],
   contract_number: ['contrato', 'contract', 'contractnumber', 'account'],
   transaction_date: ['fecha venta', 'fechaventa', 'sale date', 'saledate', 'transactiondate'],
+  record_loaded_date: ['fecha carga', 'fecha_carga', 'fechacarga', 'loaded date', 'loaddate', 'recordloadeddate'],
+  vehicle_loaded_date: ['fecha carga carro', 'fechacargacarro', 'vehicleloaddate'],
   insurance_provider: ['seguro', 'aseguradora', 'insuranceprovider'],
   insurance_policy_number: ['poliza', 'policy', 'policynumber', 'insurancepolicynumber'],
   insurance_expiration_date: ['vence poliza', 'vencimiento poliza', 'insuranceexpirationdate'],
@@ -385,6 +388,7 @@ function formDataFromImport(row, headerMap) {
   data.alternate_phone = normalizePhoneForSms(data.alternate_phone) || data.alternate_phone;
   data.vehicle_year = String(data.vehicle_year || '').replace(/\D/g, '').slice(0, 4);
   data.transaction_date = inputDate(data.transaction_date);
+  data.record_loaded_date = inputDate(data.record_loaded_date) || new Date().toISOString().slice(0, 10);
   data.insurance_expiration_date = inputDate(data.insurance_expiration_date);
   data.sale_type = 'BHPH';
   data.active_module = 'SALE';
@@ -397,6 +401,8 @@ function formDataFromImport(row, headerMap) {
   data.gap_has_coverage = yesNoGap(data.gap_has_coverage);
   data.insurance_status = data.insurance_policy_number ? 'Pendiente' : '';
   data.gps_device_status = data.gps_imei ? 'No verificado' : '';
+  data.gps_api_provider_1_name = data.gps_api_provider_1_name || 'Voltswitch';
+  data.gps_api_provider_2_name = data.gps_api_provider_2_name || 'Advantage';
   return data;
 }
 
@@ -440,13 +446,13 @@ function downloadImportTemplate() {
   const headers = [
     'nombre', 'apellido', 'telefono', 'email', 'direccion', 'ciudad', 'estado', 'zip',
     'VIN', 'ano', 'marca', 'modelo', 'millas', 'color', 'placa', 'stock',
-    'contrato', 'fecha_venta', 'seguro', 'poliza', 'vence_poliza',
+    'contrato', 'fecha_venta', 'fecha_carga', 'seguro', 'poliza', 'vence_poliza',
     'gps_imei', 'proveedor_gps', 'gap'
   ];
   const example = [
     'JUAN', 'PEREZ', '3055551212', 'cliente@email.com', '123 Main St', 'Miami', 'FL', '33169',
     '3KPFK4A78HE069822', '2017', 'KIA', 'Forte', '123000', 'BLUE', 'ABC123', 'EC12362',
-    '2026-40', '2026-07-07', 'Progressive', 'POL12345', '2026-08-07',
+    '2026-40', '2026-07-07', '2026-07-13', 'Progressive', 'POL12345', '2026-08-07',
     '867530900000000', 'Proveedor GPS', 'Si'
   ];
   const csv = `${headers.join(',')}\n${example.join(',')}\n`;
@@ -460,7 +466,7 @@ function downloadImportTemplate() {
 }
 
 const insuranceGpsFields = [
-  'vehicle_loaded_date', 'insurance_first_review_date', 'gps_first_review_date',
+  'record_loaded_date', 'vehicle_loaded_date', 'insurance_first_review_date', 'gps_first_review_date',
   'insurance_verification_mode', 'insurance_api_provider', 'insurance_api_account_ref',
   'insurance_api_status',
   'insurance_provider', 'insurance_policy_number', 'insurance_agency_phone',
@@ -474,11 +480,13 @@ const insuranceGpsFields = [
   'gps_device_status', 'gps_battery_connected',
   'gps_last_mileage', 'gps_last_location', 'gps_last_seen_at',
   'gps_next_review_date', 'gps_monthly_miles_status',
-  'recovery_event_type', 'recovery_event_date', 'recovery_policy_active_on_event',
+  'recovery_event_type', 'recovery_event_date', 'recovery_last_location',
+  'recovery_policy_active_on_event', 'recovery_damage_notes',
   'gap_has_coverage', 'gap_provider', 'gap_contract_number', 'gap_issued_vin',
   'gap_vin_match', 'gap_issue_date', 'gap_contract_status',
   'gap_claim_status', 'insurance_claim_number', 'gap_opened_date',
-  'gap_missing_documents', 'ops_action_type', 'ops_contact_result',
+  'claim_last_call_date', 'claim_pending_action', 'gap_missing_documents',
+  'ops_action_type', 'ops_contact_result',
   'ops_next_action', 'insurance_gps_notes'
 ];
 
@@ -723,6 +731,97 @@ async function loadArchive() {
   renderArchiveResults(data || []);
 }
 
+function csvCell(value) {
+  let text = String(value ?? '');
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows.map(row => row.map(csvCell).join(',')).join('\n');
+  const blob = new Blob([`\ufeff${csv}\n`], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportCustomersCsv() {
+  if (!supabase || !session?.user) return;
+  controls.exportCustomers.disabled = true;
+  setCloudStatus('Preparando descarga de clientes...', '');
+  try {
+    const { data, error } = await supabase
+      .from('doc_sales')
+      .select('customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at')
+      .order('created_at', { ascending: false })
+      .limit(5000);
+    if (error) throw error;
+    const headers = [
+      'cliente', 'email', 'telefono', 'direccion', 'ciudad', 'estado', 'zip',
+      'vehiculo', 'ano', 'marca', 'modelo', 'vin', 'millas', 'color', 'placa',
+      'stock', 'contrato', 'fecha_venta', 'estatus',
+      'seguro_proveedor', 'poliza', 'vence_poliza', 'estado_seguro',
+      'gps_imei', 'gps_proveedor', 'estado_gps', 'ultima_ubicacion_gps',
+      'gap', 'gap_contrato', 'gap_vin_emitido', 'gap_estatus_reclamo',
+      'evento', 'ubicacion_evento', 'poliza_activa_evento', 'ultima_llamada_reclamo',
+      'pendiente_reclamo', 'fecha_carga_doc', 'fecha_carga'
+    ];
+    const rows = [headers, ...(data || []).map(sale => {
+      const form = sale.form_data || {};
+      return [
+        sale.customer_name || [form.first_name, form.middle_name, form.last_name, form.second_last_name].filter(Boolean).join(' '),
+        sale.customer_email || form.customer_email,
+        sale.customer_phone || form.phone,
+        form.address,
+        form.city,
+        form.state,
+        form.zip_code,
+        sale.vehicle_description || [form.vehicle_year, form.vehicle_make, form.vehicle_model].filter(Boolean).join(' '),
+        form.vehicle_year,
+        form.vehicle_make,
+        form.vehicle_model,
+        sale.vin || form.vin,
+        form.vehicle_mileage,
+        form.vehicle_color,
+        form.vehicle_plate,
+        sale.stock_number || form.stock_number,
+        sale.contract_number || form.contract_number,
+        sale.transaction_date || form.transaction_date,
+        statusLabel(sale.status),
+        form.insurance_provider,
+        form.insurance_policy_number,
+        form.insurance_expiration_date,
+        form.insurance_status,
+        form.gps_imei,
+        form.gps_provider,
+        form.gps_device_status,
+        form.gps_last_location,
+        form.gap_has_coverage,
+        form.gap_contract_number,
+        form.gap_issued_vin,
+        form.gap_claim_status,
+        form.recovery_event_type,
+        form.recovery_last_location,
+        form.recovery_policy_active_on_event,
+        form.claim_last_call_date,
+        form.claim_pending_action,
+        form.record_loaded_date,
+        sale.created_at
+      ];
+    })];
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(`DOC_EASYCAR_clientes_${stamp}.csv`, rows);
+    setCloudStatus(`Descarga lista: ${(data || []).length} clientes/exportaciones accesibles para este usuario.`, 'good');
+  } catch (error) {
+    setCloudStatus(`No se pudo descargar clientes: ${error.message || 'revisa Supabase'}`, 'error');
+  } finally {
+    controls.exportCustomers.disabled = false;
+  }
+}
+
 function daysBetween(dateValue, fallback = null) {
   const source = dateValue || fallback;
   if (!source) return null;
@@ -784,7 +883,7 @@ function buildOpsProfile(sale, operations = []) {
   const claimOpenedSource = form.gap_opened_date || form.recovery_event_date || null;
   const gapClaimDays = gapOpen ? daysBetween(claimOpenedSource) : null;
   const insuranceClaimOpen = Boolean(form.insurance_claim_number || ['Seguro abierto', 'Esperando pago seguro'].includes(form.gap_claim_status));
-  const insuranceClaimDays = insuranceClaimOpen ? daysBetween(form.recovery_event_date || form.gap_opened_date) : null;
+  const insuranceClaimDays = insuranceClaimOpen ? daysBetween(form.claim_last_call_date || form.recovery_event_date || form.gap_opened_date) : null;
   const soldVin = cleanVin(sale.vin || form.vin);
   const issuedGapVin = cleanVin(form.gap_issued_vin);
   const gapVinMismatch = Boolean(issuedGapVin && soldVin && issuedGapVin !== soldVin);
@@ -806,7 +905,10 @@ function buildOpsProfile(sale, operations = []) {
   if (gapProblem) alerts.push(gapVinMismatch ? 'VIN GAP no coincide' : 'GAP requiere verificacion');
   if (gapOpen) alerts.push(`GAP / siniestro activo ${daysText(gapClaimDays)}`);
   if (insuranceClaimOpen) alerts.push(`Reclamo seguro ${daysText(insuranceClaimDays)}`);
+  if (insuranceClaimOpen && !form.claim_pending_action && !form.gap_missing_documents) alerts.push('Reclamo sin pendiente definido');
   if (recoveryOpen) alerts.push('Repo / entrega registrado');
+  if (recoveryOpen && !form.recovery_last_location) alerts.push('Repo/entrega sin ubicacion');
+  if (recoveryOpen && !form.recovery_policy_active_on_event) alerts.push('Repo/entrega sin poliza del evento');
   if (noFollowUp) alerts.push(`Sin seguimiento operador ${daysText(daysSinceOps)}`);
   if (noteProblem) alerts.push('Falta nota auditable');
   return {
@@ -1255,6 +1357,7 @@ if (!configured) {
     }
   });
   controls.searchArchive.addEventListener('click', () => loadArchive().catch(error => setCloudStatus(error.message, 'error')));
+  controls.exportCustomers.addEventListener('click', () => exportCustomersCsv().catch(error => setCloudStatus(error.message, 'error')));
   controls.adminCreateUser.addEventListener('click', () => saveAdminUser('create').catch(error => setCloudStatus(error.message, 'error')));
   controls.adminInviteUser.addEventListener('click', () => saveAdminUser('invite').catch(error => setCloudStatus(error.message, 'error')));
   controls.importTemplate.addEventListener('click', downloadImportTemplate);
