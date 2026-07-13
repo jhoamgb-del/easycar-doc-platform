@@ -26,20 +26,35 @@ function customerName(form) {
 function normalizedPhone(form) {
   const candidates = [form.phone, form.alternate_phone].filter(Boolean);
   for (const candidate of candidates) {
-    const matches = String(candidate).match(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g) || [];
-    for (const match of matches) {
-      const digits = match.replace(/\D/g, '');
-      if (digits.length === 10) return `+1${digits}`;
-      if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+    const raw = String(candidate).trim();
+    const compact = raw.replace(/[^\d+]/g, '');
+    if (compact.startsWith('+')) {
+      const digits = compact.slice(1).replace(/\D/g, '');
+      if (digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+      continue;
     }
-    const digits = String(candidate).replace(/\D/g, '');
+    if (compact.startsWith('00')) {
+      const digits = compact.slice(2).replace(/\D/g, '');
+      if (digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+      continue;
+    }
+    const digits = compact.replace(/\D/g, '');
     if (digits.length === 10) return `+1${digits}`;
     if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
   }
   return '';
 }
 
+function withNormalizedPhones(formData) {
+  return {
+    ...formData,
+    phone: normalizedPhone({ phone: formData.phone }) || formData.phone || '',
+    alternate_phone: normalizedPhone({ phone: formData.alternate_phone }) || formData.alternate_phone || ''
+  };
+}
+
 function saleRecord(formData, ownerId) {
+  formData = withNormalizedPhones(formData);
   const vehicle = [formData.vehicle_year, formData.vehicle_make, formData.vehicle_model].filter(Boolean).join(' ');
   return {
     created_by: ownerId,

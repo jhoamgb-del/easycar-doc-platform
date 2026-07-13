@@ -464,8 +464,8 @@
         <label>Estado <input id="state"></label>
         <label>Codigo postal <input id="zip_code"></label>
         <label>Email del cliente para firma digital <input id="customer_email" type="email"></label>
-        <label>Telefono <input id="phone"></label>
-        <label>Telefono alterno <input id="alternate_phone"></label>
+        <label>Telefono para SMS <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+1 305 555 1212"></label>
+        <label>Telefono alterno <input id="alternate_phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+1 305 555 1212"></label>
         <label>Licencia / pasaporte / ID <input id="driver_license"></label>
         <label>Co-buyer <input id="co_buyer_name"></label>
 
@@ -1171,6 +1171,30 @@
     const allDocs = () => [...ORIGINAL_DOCS, ...VOLUNTARY_DOCS, ...REPO_DOCS];
     const currentSaleType = () => (val('sale_type') === 'REPO' ? 'REPO' : val('sale_type') === 'VOLUNTARY' ? 'VOLUNTARY' : val('sale_type') === 'BANCO' ? 'BANCO' : 'BHPH');
     const activeModule = () => val('active_module') || 'SALE';
+    function normalizePhoneForSms(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+      const compact = raw.replace(/[^\d+]/g, '');
+      if (compact.startsWith('+')) {
+        const digits = compact.slice(1).replace(/\D/g, '');
+        return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : '';
+      }
+      if (compact.startsWith('00')) {
+        const digits = compact.slice(2).replace(/\D/g, '');
+        return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : '';
+      }
+      const digits = compact.replace(/\D/g, '');
+      if (digits.length === 10) return `+1${digits}`;
+      if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+      return '';
+    }
+    function normalizePhoneField(id) {
+      const field = $(id);
+      if (!field || !field.value.trim()) return '';
+      const normalized = normalizePhoneForSms(field.value);
+      if (normalized) field.value = normalized;
+      return normalized;
+    }
     function visibleDocs() {
       const mode = activeModule() === 'INSURANCE_GPS' ? 'INSURANCE_GPS' : currentSaleType();
       const order = DOC_SETS[mode] || DOC_SETS.BHPH;
@@ -1876,6 +1900,8 @@
     }
     function collectFormData() {
       ensureDefaultDates();
+      normalizePhoneField('phone');
+      normalizePhoneField('alternate_phone');
       updateInsuranceGpsSchedule();
       calculateConditionalDeadline();
       calculatePickupSchedule();

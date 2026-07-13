@@ -94,7 +94,34 @@ function setSessionUi(nextSession) {
   }
 }
 
+function normalizePhoneForSms(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const compact = raw.replace(/[^\d+]/g, '');
+  if (compact.startsWith('+')) {
+    const digits = compact.slice(1).replace(/\D/g, '');
+    return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : '';
+  }
+  if (compact.startsWith('00')) {
+    const digits = compact.slice(2).replace(/\D/g, '');
+    return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : '';
+  }
+  const digits = compact.replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return '';
+}
+
+function withNormalizedPhones(formData) {
+  return {
+    ...formData,
+    phone: normalizePhoneForSms(formData.phone) || formData.phone || '',
+    alternate_phone: normalizePhoneForSms(formData.alternate_phone) || formData.alternate_phone || ''
+  };
+}
+
 function saleRecord(formData) {
+  formData = withNormalizedPhones(formData);
   const customerName = [formData.first_name, formData.middle_name, formData.last_name, formData.second_last_name].filter(Boolean).join(' ');
   const vehicle = [formData.vehicle_year, formData.vehicle_make, formData.vehicle_model].filter(Boolean).join(' ');
   return {
@@ -114,14 +141,7 @@ function saleRecord(formData) {
 
 function normalizedPhone(formData) {
   const candidates = [formData.phone, formData.alternate_phone].filter(Boolean);
-  for (const candidate of candidates) {
-    const matches = String(candidate).match(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g) || [];
-    for (const match of matches) {
-      const digits = match.replace(/\D/g, '');
-      if (digits.length === 10 || (digits.length === 11 && digits.startsWith('1'))) return true;
-    }
-  }
-  return false;
+  return candidates.some(candidate => Boolean(normalizePhoneForSms(candidate)));
 }
 
 function moneyNumber(value) {
@@ -217,6 +237,7 @@ function validateForSignature(formData) {
 
 async function saveSale(formData) {
   if (!supabase || !session?.user) return null;
+  formData = withNormalizedPhones(formData);
   const record = saleRecord(formData);
   let query;
   if (currentSaleId) {
@@ -360,6 +381,8 @@ function formDataFromImport(row, headerMap) {
     data.last_name = parts.join(' ');
   }
   data.vin = cleanVin(data.vin);
+  data.phone = normalizePhoneForSms(data.phone) || data.phone;
+  data.alternate_phone = normalizePhoneForSms(data.alternate_phone) || data.alternate_phone;
   data.vehicle_year = String(data.vehicle_year || '').replace(/\D/g, '').slice(0, 4);
   data.transaction_date = inputDate(data.transaction_date);
   data.insurance_expiration_date = inputDate(data.insurance_expiration_date);
@@ -1141,7 +1164,7 @@ async function deleteAdminUser(user) {
 
 async function sendForSignature() {
   if (!session?.access_token) throw new Error('Debes entrar con un correo autorizado antes de enviar documentos.');
-  const formData = app.collectFormData();
+  const formData = withNormalizedPhones(app.collectFormData());
   const missing = validateForSignature(formData);
   if (missing.length) {
     const firstInvalid = document.querySelector('.field-error');
