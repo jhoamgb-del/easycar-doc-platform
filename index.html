@@ -443,6 +443,10 @@
           <button type="button" class="secondary active" data-ops-filter="all">Todos</button>
           <button type="button" class="secondary" data-ops-filter="insurance">Seguro</button>
           <button type="button" class="secondary" data-ops-filter="gps">GPS</button>
+          <button type="button" class="secondary" data-ops-filter="outside_florida">Fuera de Florida</button>
+          <button type="button" class="secondary" data-ops-filter="gps_missing">Sin GPS</button>
+          <button type="button" class="secondary" data-ops-filter="gps_expired">GPS expirado</button>
+          <button type="button" class="secondary" data-ops-filter="mileage">Exceso millas</button>
           <button type="button" class="secondary" data-ops-filter="gap">GAP / Siniestro</button>
           <button type="button" class="secondary" data-ops-filter="recovery">Repo / Entrega</button>
           <button type="button" class="secondary" data-ops-filter="overdue">Vencidos</button>
@@ -580,7 +584,7 @@
         </div>
 
         <div class="section-title insurance-only">GPS</div>
-        <div class="storage-note insurance-only">GPS se revisa cada 10 dias. Si esta activo y conectado no requiere accion externa. Si esta sin senal, desconectado, removido, no localizado o con exceso de millas, se genera alerta interna para seguimiento del operador.</div>
+        <div class="storage-note insurance-only">GPS se revisa cada 10 dias. En cada revision confirma equipo, bateria, millas, ubicacion y si el vehiculo esta dentro de Florida. Sin GPS, GPS expirado, fuera de Florida, sin senal o con exceso de millas generan una alerta interna y exigen proxima accion del operador.</div>
         <label class="insurance-only">Primera revision GPS <input id="gps_first_review_date" type="date"></label>
         <label class="insurance-only">GPS IMEI / numero <input id="gps_imei"></label>
         <label class="insurance-only">Proveedor GPS <input id="gps_provider" list="gpsProviderOptions" placeholder="Voltswitch o Advantage"></label>
@@ -615,8 +619,10 @@
         <label class="insurance-only">Estatus GPS
           <select id="gps_device_status">
             <option value=""></option>
+            <option value="No instalado">No instalado / sin GPS</option>
             <option value="No verificado">No verificado</option>
             <option value="Activo">Activo</option>
+            <option value="Expirado">Expirado</option>
             <option value="Desconectado">Desconectado</option>
             <option value="Sin senal">Sin senal</option>
             <option value="Removido / alterado">Removido / alterado</option>
@@ -633,8 +639,18 @@
         </label>
         <label class="insurance-only">Millas al revisar <input id="gps_last_mileage"></label>
         <label class="insurance-only">Ultima ubicacion <input id="gps_last_location"></label>
+        <label class="insurance-only">Ubicacion del vehiculo
+          <select id="gps_location_jurisdiction">
+            <option value=""></option>
+            <option value="Dentro de Florida">Dentro de Florida</option>
+            <option value="Fuera de Florida">Fuera de Florida</option>
+            <option value="Por confirmar">Por confirmar</option>
+          </select>
+        </label>
         <label class="insurance-only">Ultima senal GPS <input id="gps_last_seen_at" type="datetime-local"></label>
+        <label class="insurance-only">Vence servicio GPS <input id="gps_service_expiration_date" type="date"></label>
         <label class="insurance-only">Proxima revision GPS <input id="gps_next_review_date" type="date" readonly></label>
+        <label class="insurance-only">Millas ultimo periodo <input id="gps_monthly_miles" type="number" min="0" step="1" placeholder="0"></label>
         <label class="insurance-only">Uso mensual
           <select id="gps_monthly_miles_status">
             <option value=""></option>
@@ -1210,7 +1226,7 @@
       'vin','vehicle_year','vehicle_make','vehicle_model','vehicle_mileage','vehicle_color','vehicle_plate','stock_number','contract_number','transaction_date','sales_rep_name','gps_status','vehicle_history_decision',
       'record_loaded_date','vehicle_loaded_date','insurance_first_review_date','gps_first_review_date','insurance_verification_mode','insurance_api_provider','insurance_api_account_ref','insurance_api_status',
       'insurance_provider','insurance_policy_number','insurance_agency_phone','insurance_status','insurance_verified_date','insurance_next_review_date','insurance_expiration_date','insurance_payments_current','insurance_comprehensive','insurance_collision','insurance_lienholder',
-      'gps_imei','gps_provider','gps_api_provider_1_name','gps_api_provider_1_url','gps_api_provider_1_ref','gps_api_provider_1_status','gps_api_provider_2_name','gps_api_provider_2_url','gps_api_provider_2_ref','gps_api_provider_2_status','gps_device_status','gps_battery_connected','gps_last_mileage','gps_last_location','gps_last_seen_at','gps_next_review_date','gps_monthly_miles_status',
+      'gps_imei','gps_provider','gps_api_provider_1_name','gps_api_provider_1_url','gps_api_provider_1_ref','gps_api_provider_1_status','gps_api_provider_2_name','gps_api_provider_2_url','gps_api_provider_2_ref','gps_api_provider_2_status','gps_device_status','gps_battery_connected','gps_last_mileage','gps_last_location','gps_location_jurisdiction','gps_last_seen_at','gps_service_expiration_date','gps_next_review_date','gps_monthly_miles','gps_monthly_miles_status',
       'recovery_event_type','recovery_event_date','recovery_last_location','recovery_policy_active_on_event','recovery_damage_notes','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_opened_date','claim_last_call_date','claim_pending_action','gap_missing_documents','ops_action_type','ops_contact_result','ops_next_action','insurance_gps_notes',
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
       'conditional_delivery_date','conditional_deadline',
@@ -1369,11 +1385,36 @@
         || ['No', 'No confirmado'].includes(val('insurance_collision'))
         || ['No', 'No confirmado'].includes(val('insurance_lienholder'));
     }
+    function isDatePast(value) {
+      if (!value) return false;
+      const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return false;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return date < today;
+    }
     function isGpsProblem() {
       return !val('gps_imei')
-        || ['No verificado', 'Desconectado', 'Sin senal', 'Removido / alterado', 'No localizado'].includes(val('gps_device_status'))
+        || ['No instalado', 'No verificado', 'Expirado', 'Desconectado', 'Sin senal', 'Removido / alterado', 'No localizado'].includes(val('gps_device_status'))
         || ['No', 'No confirmado'].includes(val('gps_battery_connected'))
-        || val('gps_monthly_miles_status') === 'Sobre 1500 millas';
+        || val('gps_monthly_miles_status') === 'Sobre 1500 millas'
+        || val('gps_location_jurisdiction') === 'Fuera de Florida'
+        || val('gps_location_jurisdiction') === 'Por confirmar'
+        || isDatePast(val('gps_service_expiration_date'));
+    }
+    function gpsRequiresFollowUp() {
+      return isGpsProblem() || val('gps_location_jurisdiction') === 'Por confirmar';
+    }
+    function updateGpsLocationAndMileage() {
+      const location = val('gps_last_location');
+      const jurisdiction = $('gps_location_jurisdiction');
+      if (jurisdiction && location && !jurisdiction.value && /(?:\bfl\b|florida)/i.test(location)) {
+        jurisdiction.value = 'Dentro de Florida';
+      }
+      const monthlyMiles = Number(val('gps_monthly_miles').replace(/[^0-9.]/g, ''));
+      if ($('gps_monthly_miles_status') && Number.isFinite(monthlyMiles) && monthlyMiles > 0) {
+        $('gps_monthly_miles_status').value = monthlyMiles > 1500 ? 'Sobre 1500 millas' : 'Dentro de limite';
+      }
     }
     function isClaimOpen() {
       return Boolean(val('insurance_claim_number') || ['Seguro abierto', 'Esperando pago seguro', 'GAP abierto', 'Esperando pago GAP'].includes(val('gap_claim_status')) || val('gap_opened_date'));
@@ -1399,6 +1440,7 @@
       }
     }
     function updateOperationalDialogs() {
+      updateGpsLocationAndMileage();
       const insuranceProblem = isInsuranceProblem();
       const gpsProblem = isGpsProblem();
       const eventType = val('recovery_event_type');
@@ -1419,7 +1461,7 @@
         'warn',
         'gpsActionText',
         gpsProblem
-          ? `GPS requiere seguimiento interno: IMEI ${val('gps_imei') || 'sin IMEI'}, estatus ${val('gps_device_status') || 'sin verificar'}, bateria ${val('gps_battery_connected') || 'sin confirmar'}, ubicacion ${val('gps_last_location') || 'sin ubicacion'}. No se notifica al cliente automaticamente; se alerta al operador.`
+          ? `GPS requiere seguimiento interno: IMEI ${val('gps_imei') || 'sin IMEI'}, estatus ${val('gps_device_status') || 'sin verificar'}, bateria ${val('gps_battery_connected') || 'sin confirmar'}, ubicacion ${val('gps_last_location') || 'sin ubicacion'} (${val('gps_location_jurisdiction') || 'por confirmar'}), servicio ${val('gps_service_expiration_date') || 'sin fecha'}, millas del periodo ${val('gps_monthly_miles') || 'sin dato'}. Registra la proxima accion. No se notifica al cliente automaticamente por un problema tecnico de GPS.`
           : ''
       );
       updatePanel(
@@ -1445,7 +1487,7 @@
         snapshot.textContent = [
           `Venta: ${val('transaction_date') || 'sin fecha'} | Carga DOC: ${val('record_loaded_date') || 'hoy'}`,
           `Seguro: ${val('insurance_status') || 'sin verificar'} | Proxima revision: ${val('insurance_next_review_date') || 'pendiente'}`,
-          `GPS: ${val('gps_device_status') || 'sin verificar'} | Proxima revision: ${val('gps_next_review_date') || 'pendiente'}`,
+          `GPS: ${val('gps_device_status') || 'sin verificar'} | Ubicacion: ${val('gps_location_jurisdiction') || 'por confirmar'} | Periodo: ${val('gps_monthly_miles') || 'sin dato'} millas | Proxima revision: ${val('gps_next_review_date') || 'pendiente'}`,
           recoveryOpen ? `${eventType}: ubicacion ${val('recovery_last_location') || 'sin confirmar'} | poliza activa ese dia ${val('recovery_policy_active_on_event') || 'sin confirmar'}` : '',
           claimOpen ? `Siniestro/GAP: ${val('insurance_claim_number') || 'sin reclamo'} | ultima llamada ${val('claim_last_call_date') || 'sin fecha'}` : '',
           `Para guardar: accion, resultado y nota auditable son obligatorios.`
@@ -2239,6 +2281,11 @@
           setInsuranceGpsStatus('Escribe una nota concreta de al menos 12 caracteres: a quien llamo, que verifico y que falta.', 'warn');
           return;
         }
+        if ((isInsuranceProblem() || gpsRequiresFollowUp()) && !formData.ops_next_action) {
+          $('ops_next_action')?.focus();
+          setInsuranceGpsStatus('Hay una irregularidad de seguro o GPS. Define la proxima accion antes de registrar la revision.', 'warn');
+          return;
+        }
         const cloudResult = window.EasyCarCloud ? await window.EasyCarCloud.saveInsuranceGpsReview(formData) : null;
         if (!cloudResult) {
           await saveSale();
@@ -2254,6 +2301,7 @@
     }
     ids.forEach(id => $(id)?.addEventListener('input', () => {
       if (id === 'transaction_date') syncSaleDates();
+      if (id === 'gps_last_location' || id === 'gps_monthly_miles') updateGpsLocationAndMileage();
       if (id === 'vehicle_loaded_date' || id.startsWith('insurance_') || id.startsWith('gps_')) updateInsuranceGpsSchedule();
       if (id === 'vin' || id.startsWith('gap_')) updateGapVinMatch();
       if (id.startsWith('surrender_')) updateSurrenderCalculations();
@@ -2263,6 +2311,7 @@
     }));
     ids.forEach(id => $(id)?.addEventListener('change', () => {
       if (id === 'transaction_date') syncSaleDates();
+      if (id === 'gps_last_location' || id === 'gps_monthly_miles') updateGpsLocationAndMileage();
       if (id === 'vehicle_loaded_date' || id.startsWith('insurance_') || id.startsWith('gps_')) updateInsuranceGpsSchedule();
       if (id === 'vin' || id.startsWith('gap_')) updateGapVinMatch();
       if (id.startsWith('surrender_')) updateSurrenderCalculations();
@@ -2292,6 +2341,7 @@
     setSaleType(currentSaleType());
     ensureDefaultDates();
     updateInsuranceGpsSchedule();
+    updateGpsLocationAndMileage();
     updateGapVinMatch();
     updateOperationalDialogs();
     renderDocs();
@@ -2306,6 +2356,7 @@
         });
         setSaleType(formData?.sale_type);
         ensureDefaultDates();
+        updateGpsLocationAndMileage();
         updateGapVinMatch();
         renderDocs();
       },
