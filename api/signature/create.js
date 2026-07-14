@@ -45,6 +45,10 @@ function normalizedPhone(form) {
   return '';
 }
 
+function hasCountryCode(value) {
+  return /^\+\d{8,15}$/.test(String(value || '').replace(/[\s().-]/g, ''));
+}
+
 function withNormalizedPhones(formData) {
   return {
     ...formData,
@@ -121,7 +125,9 @@ function requiredSignatureErrors(form) {
   for (const [key, label] of required) {
     if (!String(form[key] ?? '').trim()) errors.push(label);
   }
-  if (!normalizedPhone(form)) errors.push('Telefono valido para codigo SMS');
+  if (!normalizedPhone(form) || !hasCountryCode(form.phone)) {
+    errors.push('Telefono con codigo de pais, por ejemplo +1 305 555 1212');
+  }
   if (form.customer_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.customer_email))) errors.push('Email valido del cliente');
   if (!isVoluntary && !isRepo) {
     if (parseMoneyValue(form.pickup_down_total) <= 0) errors.push('Monto total de la inicial mayor que $0');

@@ -447,19 +447,6 @@
           <h4>Actividad del operador</h4>
           <div class="ops-operator-summary" id="opsOperatorSummary"></div>
         </div>
-        <div class="ops-filters" id="opsFilters" aria-label="Filtros de control GPS y seguro">
-          <button type="button" class="secondary active" data-ops-filter="all">Todos</button>
-          <button type="button" class="secondary" data-ops-filter="insurance">Seguro</button>
-          <button type="button" class="secondary" data-ops-filter="gps">GPS</button>
-          <button type="button" class="secondary" data-ops-filter="outside_florida">Fuera de Florida</button>
-          <button type="button" class="secondary" data-ops-filter="gps_missing">Sin GPS</button>
-          <button type="button" class="secondary" data-ops-filter="gps_expired">GPS expirado</button>
-          <button type="button" class="secondary" data-ops-filter="mileage">Exceso millas</button>
-          <button type="button" class="secondary" data-ops-filter="gap">GAP / Siniestro</button>
-          <button type="button" class="secondary" data-ops-filter="recovery">Repo / Entrega</button>
-          <button type="button" class="secondary" data-ops-filter="overdue">Vencidos</button>
-          <button type="button" class="secondary" data-ops-filter="operator">Sin seguimiento</button>
-        </div>
         <div class="archive-search">
           <label>Buscar cliente, VIN, stock, contrato, email o telefono <input id="opsSearch" autocomplete="off"></label>
           <button type="button" class="secondary" id="clearOpsSearch">Limpiar</button>
@@ -513,31 +500,24 @@
         <div class="storage-note insurance-only">El expediente hereda cliente, VIN, stock y vehiculo. Para ventas antiguas, usa la fecha real de venta y deja fecha de carga en DOC como constancia de cuando se incorporo al sistema.</div>
         <label class="insurance-only">Fecha carga del carro <input id="vehicle_loaded_date" type="date"></label>
 
-        <div class="section-title insurance-only">Seguro</div>
-        <div class="storage-note insurance-only">Seguro se revisa cada 14 dias. Si esta activa y completa no requiere accion especial. Si esta vencida, cancelada, no verificable o incompleta, se debe notificar al cliente y dejar nota auditable.</div>
-        <label class="insurance-only">Primera revision seguro <input id="insurance_first_review_date" type="date"></label>
-        <label class="insurance-only">Verificacion poliza
-          <select id="insurance_verification_mode">
-            <option value="Manual">Manual</option>
-            <option value="API pendiente">API pendiente</option>
-            <option value="API activa">API activa</option>
-          </select>
-        </label>
-        <label class="insurance-only">Proveedor API seguro <input id="insurance_api_provider" placeholder="Ej. Progressive, Geico, agency portal"></label>
-        <label class="insurance-only">Referencia API / cuenta <input id="insurance_api_account_ref"></label>
-        <label class="insurance-only">Estado automatizacion
-          <select id="insurance_api_status">
-            <option value="No configurada">No configurada</option>
-            <option value="Pendiente credenciales">Pendiente credenciales</option>
-            <option value="En prueba">En prueba</option>
-            <option value="Activa">Activa</option>
-            <option value="Fallando">Fallando</option>
-          </select>
-        </label>
-        <div class="storage-note insurance-only" id="insuranceGpsProtocolStatus">Proxima accion: registra la primera revision de seguro y GPS.</div>
+        <div class="section-title insurance-only">Identificacion de poliza</div>
+        <div class="storage-note insurance-only">Registra la poliza una sola vez. No hay integracion API de seguro en este formulario. Cada verificacion posterior queda como un registro separado y auditable.</div>
         <label class="insurance-only">Proveedor seguro <input id="insurance_provider"></label>
         <label class="insurance-only">Numero de poliza <input id="insurance_policy_number"></label>
         <label class="insurance-only">Telefono agencia / seguro <input id="insurance_agency_phone"></label>
+        <label class="insurance-only">Fecha emision poliza <input id="insurance_issue_date" type="date"></label>
+        <label class="insurance-only">Fecha caduca poliza <input id="insurance_expiration_date" type="date"></label>
+        <label class="insurance-only">Direccion de poliza coincide con cliente
+          <select id="insurance_address_matches">
+            <option value=""></option><option value="Si">Si</option><option value="No">No</option><option value="No confirmado">No confirmado</option>
+          </select>
+        </label>
+        <label class="insurance-only">Direccion que aparece en la poliza <input id="insurance_policy_address" placeholder="Completa si no coincide"></label>
+        <label class="insurance-only">Poliza cancelada desde <input id="insurance_cancelled_since" type="date"></label>
+
+        <div class="section-title insurance-only">Agregar verificacion de seguro</div>
+        <div class="storage-note insurance-only" id="insuranceGpsProtocolStatus">Seguro cada 14 dias. La fecha, usuario y hora se archivan al registrar la verificacion.</div>
+        <label class="insurance-only">Fecha de verificacion seguro <input id="insurance_verified_date" type="date"></label>
         <label class="insurance-only">Estatus poliza
           <select id="insurance_status">
             <option value=""></option>
@@ -548,9 +528,7 @@
             <option value="No verificable">No verificable</option>
           </select>
         </label>
-        <label class="insurance-only">Fecha verificacion poliza <input id="insurance_verified_date" type="date"></label>
         <label class="insurance-only">Proxima revision poliza <input id="insurance_next_review_date" type="date" readonly></label>
-        <label class="insurance-only">Fecha caduca poliza <input id="insurance_expiration_date" type="date"></label>
         <label class="insurance-only">Poliza pagada al dia
           <select id="insurance_payments_current">
             <option value=""></option>
@@ -583,6 +561,8 @@
             <option value="No confirmado">No confirmado</option>
           </select>
         </label>
+        <label class="full insurance-only">Motivo / resultado de verificacion de seguro <textarea id="insurance_status_reason" placeholder="Obligatorio si no esta activa o falta una cobertura"></textarea></label>
+        <div class="process-actions insurance-only"><button type="button" class="secondary" id="prepareInsuranceVerification">Preparar verificacion de seguro</button></div>
         <div class="process-panel insurance-only" id="insuranceActionPanel" hidden>
           <h4>Accion requerida por seguro</h4>
           <p id="insuranceActionText"></p>
@@ -591,39 +571,22 @@
           </div>
         </div>
 
-        <div class="section-title insurance-only">GPS</div>
-        <div class="storage-note insurance-only">GPS se revisa cada 10 dias. En cada revision confirma equipo, bateria, millas, ubicacion y si el vehiculo esta dentro de Florida. Sin GPS, GPS expirado, fuera de Florida, sin senal o con exceso de millas generan una alerta interna y exigen proxima accion del operador.</div>
-        <label class="insurance-only">Primera revision GPS <input id="gps_first_review_date" type="date"></label>
+        <div class="section-title insurance-only">Identificacion GPS</div>
+        <div class="storage-note insurance-only">Identifica el equipo una vez. Las credenciales de API nunca se escriben en esta pantalla: se configuran de forma segura en el servidor cuando los proveedores Voltswitch y Advantage las entreguen.</div>
         <label class="insurance-only">GPS IMEI / numero <input id="gps_imei"></label>
         <label class="insurance-only">Proveedor GPS <input id="gps_provider" list="gpsProviderOptions" placeholder="Voltswitch o Advantage"></label>
         <datalist id="gpsProviderOptions">
           <option value="Voltswitch"></option>
           <option value="Advantage"></option>
         </datalist>
-        <label class="insurance-only">GPS API proveedor 1 <input id="gps_api_provider_1_name" placeholder="Voltswitch"></label>
-        <label class="insurance-only">GPS API proveedor 1 URL <input id="gps_api_provider_1_url" placeholder="Portal o endpoint API"></label>
-        <label class="insurance-only">GPS API proveedor 1 referencia <input id="gps_api_provider_1_ref" placeholder="Cuenta, token ref. o credencial interna"></label>
-        <label class="insurance-only">GPS API proveedor 1 estado
-          <select id="gps_api_provider_1_status">
-            <option value="No configurada">No configurada</option>
-            <option value="Pendiente credenciales">Pendiente credenciales</option>
-            <option value="En prueba">En prueba</option>
-            <option value="Activa">Activa</option>
-            <option value="Fallando">Fallando</option>
-          </select>
+        <label class="insurance-only">Vence servicio GPS <input id="gps_service_expiration_date" type="date"></label>
+        <label class="insurance-only">Conectado a bateria
+          <select id="gps_battery_connected"><option value=""></option><option value="Si">Si</option><option value="No">No</option><option value="No confirmado">No confirmado</option></select>
         </label>
-        <label class="insurance-only">GPS API proveedor 2 <input id="gps_api_provider_2_name" placeholder="Advantage"></label>
-        <label class="insurance-only">GPS API proveedor 2 URL <input id="gps_api_provider_2_url" placeholder="Portal o endpoint API"></label>
-        <label class="insurance-only">GPS API proveedor 2 referencia <input id="gps_api_provider_2_ref" placeholder="Cuenta, token ref. o credencial interna"></label>
-        <label class="insurance-only">GPS API proveedor 2 estado
-          <select id="gps_api_provider_2_status">
-            <option value="No configurada">No configurada</option>
-            <option value="Pendiente credenciales">Pendiente credenciales</option>
-            <option value="En prueba">En prueba</option>
-            <option value="Activa">Activa</option>
-            <option value="Fallando">Fallando</option>
-          </select>
-        </label>
+
+        <div class="section-title insurance-only">Agregar verificacion GPS</div>
+        <div class="storage-note insurance-only">GPS cada 10 dias. Si no esta activo, esta expirado, removido o fuera de Florida, el expediente queda en alerta roja y exige seguimiento interno.</div>
+        <label class="insurance-only">Fecha de verificacion GPS <input id="gps_first_review_date" type="date"></label>
         <label class="insurance-only">Estatus GPS
           <select id="gps_device_status">
             <option value=""></option>
@@ -637,14 +600,6 @@
             <option value="No localizado">No localizado</option>
           </select>
         </label>
-        <label class="insurance-only">Conectado a bateria
-          <select id="gps_battery_connected">
-            <option value=""></option>
-            <option value="Si">Si</option>
-            <option value="No">No</option>
-            <option value="No confirmado">No confirmado</option>
-          </select>
-        </label>
         <label class="insurance-only">Millas al revisar <input id="gps_last_mileage"></label>
         <label class="insurance-only">Ultima ubicacion <input id="gps_last_location"></label>
         <label class="insurance-only">Ubicacion del vehiculo
@@ -656,7 +611,8 @@
           </select>
         </label>
         <label class="insurance-only">Ultima senal GPS <input id="gps_last_seen_at" type="datetime-local"></label>
-        <label class="insurance-only">Vence servicio GPS <input id="gps_service_expiration_date" type="date"></label>
+        <label class="insurance-only">Donde usualmente duerme el carro <input id="gps_overnight_location" placeholder="Direccion o zona habitual"></label>
+        <label class="full insurance-only">Motivo / seguimiento GPS <textarea id="gps_status_reason" placeholder="Obligatorio si no esta activo, esta expirado, desconectado o removido"></textarea></label>
         <label class="insurance-only">Proxima revision GPS <input id="gps_next_review_date" type="date" readonly></label>
         <label class="insurance-only">Millas ultimo periodo <input id="gps_monthly_miles" type="number" min="0" step="1" placeholder="0"></label>
         <label class="insurance-only">Uso mensual
@@ -667,6 +623,7 @@
             <option value="No calculado">No calculado</option>
           </select>
         </label>
+        <div class="process-actions insurance-only"><button type="button" class="secondary" id="prepareGpsVerification">Preparar verificacion GPS</button></div>
         <div class="process-panel insurance-only" id="gpsActionPanel" hidden>
           <h4>Alerta interna GPS</h4>
           <p id="gpsActionText"></p>
@@ -738,8 +695,10 @@
           </select>
         </label>
         <label class="insurance-only">Numero reclamo seguro <input id="insurance_claim_number"></label>
+        <label class="insurance-only">Numero reclamo GAP <input id="gap_claim_number"></label>
         <label class="insurance-only">Fecha apertura GAP <input id="gap_opened_date" type="date"></label>
-        <label class="insurance-only">Ultima llamada reclamo <input id="claim_last_call_date" type="date"></label>
+        <label class="insurance-only">Ultima llamada seguro <input id="insurance_claim_last_call_date" type="date"></label>
+        <label class="insurance-only">Ultima llamada GAP <input id="gap_last_call_date" type="date"></label>
         <label class="full insurance-only">Pendiente reclamo / GAP <input id="claim_pending_action" placeholder="Ej. falta police report, payoff, carta de total loss, pago seguro"></label>
         <label class="full insurance-only">Documentos faltantes GAP / siniestro <textarea id="gap_missing_documents"></textarea></label>
         <div class="process-panel insurance-only" id="claimActionPanel" hidden>
@@ -747,7 +706,7 @@
           <p id="claimActionText"></p>
         </div>
 
-        <div class="section-title insurance-only">Registro de revision</div>
+        <div class="section-title insurance-only">Registro y seguimiento</div>
         <div class="process-panel insurance-only" id="reviewSnapshotPanel">
           <h4>Resumen de lo que quedara asentado</h4>
           <p id="reviewSnapshotText">Completa seguro, GPS o evento especial para ver el resumen de la revision.</p>
@@ -755,7 +714,8 @@
         <label class="insurance-only">Accion del operador
           <select id="ops_action_type">
             <option value=""></option>
-            <option value="Revision completa">Revision completa</option>
+            <option value="Verificacion seguro">Verificacion seguro</option>
+            <option value="Verificacion GPS">Verificacion GPS</option>
             <option value="Llamada seguro">Llamada seguro</option>
             <option value="Llamada cliente">Llamada cliente</option>
             <option value="Revision GPS">Revision GPS</option>
@@ -780,8 +740,12 @@
         <label class="full insurance-only">Proxima accion del operador <input id="ops_next_action" placeholder="Ej. llamar agencia, pedir poliza, verificar ubicacion, abrir GAP"></label>
         <label class="full insurance-only">Notas Seguros / GPS / GAP <textarea id="insurance_gps_notes"></textarea></label>
         <div class="ops-action insurance-only">
-          <button type="button" id="saveInsuranceGpsReview">Registrar revision Seguros / GPS</button>
+          <button type="button" id="saveInsuranceGpsReview">Registrar seguimiento</button>
           <div id="insuranceGpsStatus" class="status">La accion, resultado y nota son obligatorios para dejar evidencia auditable con usuario, dia y hora.</div>
+        </div>
+        <div class="process-panel insurance-only" id="operationHistoryPanel">
+          <h4>Historial de verificaciones y seguimiento</h4>
+          <div id="operationHistory" class="ops-results"><p class="empty-history">Guarda o abre un expediente para ver su historial auditable.</p></div>
         </div>
 
         <div class="section-title sale-operation-only">Venta y pago</div>
@@ -1232,10 +1196,10 @@
       'sale_type','active_module',
       'first_name','middle_name','last_name','second_last_name','co_buyer_name','address','city','state','zip_code','customer_email','phone','alternate_phone','driver_license',
       'vin','vehicle_year','vehicle_make','vehicle_model','vehicle_mileage','vehicle_color','vehicle_plate','stock_number','contract_number','transaction_date','sales_rep_name','gps_status','vehicle_history_decision',
-      'record_loaded_date','vehicle_loaded_date','insurance_first_review_date','gps_first_review_date','insurance_verification_mode','insurance_api_provider','insurance_api_account_ref','insurance_api_status',
-      'insurance_provider','insurance_policy_number','insurance_agency_phone','insurance_status','insurance_verified_date','insurance_next_review_date','insurance_expiration_date','insurance_payments_current','insurance_comprehensive','insurance_collision','insurance_lienholder',
-      'gps_imei','gps_provider','gps_api_provider_1_name','gps_api_provider_1_url','gps_api_provider_1_ref','gps_api_provider_1_status','gps_api_provider_2_name','gps_api_provider_2_url','gps_api_provider_2_ref','gps_api_provider_2_status','gps_device_status','gps_battery_connected','gps_last_mileage','gps_last_location','gps_location_jurisdiction','gps_last_seen_at','gps_service_expiration_date','gps_next_review_date','gps_monthly_miles','gps_monthly_miles_status',
-      'recovery_event_type','recovery_event_date','recovery_last_location','recovery_policy_active_on_event','recovery_damage_notes','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_opened_date','claim_last_call_date','claim_pending_action','gap_missing_documents','ops_action_type','ops_contact_result','ops_next_action','insurance_gps_notes',
+      'record_loaded_date','vehicle_loaded_date','insurance_first_review_date','gps_first_review_date',
+      'insurance_provider','insurance_policy_number','insurance_agency_phone','insurance_issue_date','insurance_expiration_date','insurance_address_matches','insurance_policy_address','insurance_cancelled_since','insurance_status','insurance_verified_date','insurance_next_review_date','insurance_payments_current','insurance_comprehensive','insurance_collision','insurance_lienholder','insurance_status_reason',
+      'gps_imei','gps_provider','gps_device_status','gps_battery_connected','gps_last_mileage','gps_last_location','gps_location_jurisdiction','gps_last_seen_at','gps_overnight_location','gps_status_reason','gps_service_expiration_date','gps_next_review_date','gps_monthly_miles','gps_monthly_miles_status',
+      'recovery_event_type','recovery_event_date','recovery_last_location','recovery_policy_active_on_event','recovery_damage_notes','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_claim_number','gap_opened_date','insurance_claim_last_call_date','gap_last_call_date','claim_pending_action','gap_missing_documents','ops_action_type','ops_contact_result','ops_next_action','insurance_gps_notes',
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
       'conditional_delivery_date','conditional_deadline',
       'surrender_date','surrender_time','surrender_location','account_number','surrender_monthly_payment','surrender_paid_installments','surrender_owed_installments','surrender_amount_owed','surrender_payoff','surrender_days_sold','surrender_keys','surrender_title','surrender_registration','surrender_exterior','surrender_mechanical','surrender_personal_property','surrender_photo_notes',
@@ -1329,13 +1293,9 @@
       if ($('surrender_date') && !$('surrender_date').value) $('surrender_date').value = todayInputValue();
       if ($('repo_date') && !$('repo_date').value) $('repo_date').value = todayInputValue();
       if ($('record_loaded_date') && !$('record_loaded_date').value) $('record_loaded_date').value = todayInputValue();
-      if ($('vehicle_loaded_date') && !$('vehicle_loaded_date').value) $('vehicle_loaded_date').value = saleDate;
+      if ($('vehicle_loaded_date') && !$('vehicle_loaded_date').value) $('vehicle_loaded_date').value = todayInputValue();
       if ($('insurance_first_review_date') && !$('insurance_first_review_date').value) $('insurance_first_review_date').value = todayInputValue();
       if ($('gps_first_review_date') && !$('gps_first_review_date').value) $('gps_first_review_date').value = todayInputValue();
-      if ($('insurance_verification_mode') && !$('insurance_verification_mode').value) $('insurance_verification_mode').value = 'Manual';
-      if ($('insurance_api_status') && !$('insurance_api_status').value) $('insurance_api_status').value = 'No configurada';
-      if ($('gps_api_provider_1_name') && !$('gps_api_provider_1_name').value) $('gps_api_provider_1_name').value = 'Voltswitch';
-      if ($('gps_api_provider_2_name') && !$('gps_api_provider_2_name').value) $('gps_api_provider_2_name').value = 'Advantage';
       syncPickupStartDate();
     }
     function dateValue(id) {
@@ -1379,9 +1339,7 @@
       if (status) {
         const insuranceNext = val('insurance_next_review_date') || 'pendiente';
         const gpsNext = val('gps_next_review_date') || 'pendiente';
-        const mode = val('insurance_verification_mode') || 'Manual';
-        const api = val('insurance_api_status') || 'No configurada';
-        status.textContent = `Protocolo: seguro cada 14 dias, GPS cada 10 dias. Proxima poliza: ${insuranceNext}. Proximo GPS: ${gpsNext}. Verificacion: ${mode}. API: ${api}.`;
+        status.textContent = `Agenda: proxima verificacion de seguro ${insuranceNext}; proxima verificacion GPS ${gpsNext}. Cada registro conserva fecha, hora, usuario y nota.`;
       }
       updateOperationalDialogs();
     }
@@ -1497,7 +1455,7 @@
           `Seguro: ${val('insurance_status') || 'sin verificar'} | Proxima revision: ${val('insurance_next_review_date') || 'pendiente'}`,
           `GPS: ${val('gps_device_status') || 'sin verificar'} | Ubicacion: ${val('gps_location_jurisdiction') || 'por confirmar'} | Periodo: ${val('gps_monthly_miles') || 'sin dato'} millas | Proxima revision: ${val('gps_next_review_date') || 'pendiente'}`,
           recoveryOpen ? `${eventType}: ubicacion ${val('recovery_last_location') || 'sin confirmar'} | poliza activa ese dia ${val('recovery_policy_active_on_event') || 'sin confirmar'}` : '',
-          claimOpen ? `Siniestro/GAP: ${val('insurance_claim_number') || 'sin reclamo'} | ultima llamada ${val('claim_last_call_date') || 'sin fecha'}` : '',
+          claimOpen ? `Siniestro/GAP: seguro ${val('insurance_claim_number') || 'sin reclamo'} | ultima llamada seguro ${val('insurance_claim_last_call_date') || 'sin fecha'} | ultima llamada GAP ${val('gap_last_call_date') || 'sin fecha'}` : '',
           `Para guardar: accion, resultado y nota auditable son obligatorios.`
         ].filter(Boolean).join(' | ');
       }
@@ -2316,6 +2274,7 @@
       if (id.startsWith('repo_')) updateRepoCalculations();
       updateOperationalDialogs();
       renderDocs();
+      window.EasyCarCloud?.scheduleAutoSave?.(collectFormData());
     }));
     ids.forEach(id => $(id)?.addEventListener('change', () => {
       if (id === 'transaction_date') syncSaleDates();
@@ -2326,6 +2285,7 @@
       if (id.startsWith('repo_')) updateRepoCalculations();
       updateOperationalDialogs();
       renderDocs();
+      window.EasyCarCloud?.scheduleAutoSave?.(collectFormData());
     }));
     $('vin').addEventListener('input', scheduleVinDecode);
     $('address').addEventListener('input', scheduleAddressDetect);
@@ -2334,6 +2294,20 @@
     $('refreshDocs').addEventListener('click', renderDocs);
     $('decodeVin').addEventListener('click', decodeVin);
     $('copyInsuranceNotice')?.addEventListener('click', () => copyPreparedText(insuranceNoticeText(), 'Aviso de seguro'));
+    $('prepareInsuranceVerification')?.addEventListener('click', () => {
+      $('ops_action_type').value = 'Verificacion seguro';
+      $('ops_contact_result').value = 'Completado';
+      if (!$('insurance_verified_date').value) $('insurance_verified_date').value = todayInputValue();
+      updateInsuranceGpsSchedule();
+      $('insurance_gps_notes')?.focus();
+    });
+    $('prepareGpsVerification')?.addEventListener('click', () => {
+      $('ops_action_type').value = 'Verificacion GPS';
+      $('ops_contact_result').value = 'Completado';
+      if (!$('gps_first_review_date').value) $('gps_first_review_date').value = todayInputValue();
+      updateInsuranceGpsSchedule();
+      $('insurance_gps_notes')?.focus();
+    });
     $('saveSale').addEventListener('click', saveSale);
     $('saveInsuranceGpsReview').addEventListener('click', saveInsuranceGpsReview);
     $('sale_type_bhph').addEventListener('change', () => setSaleType('BHPH'));
