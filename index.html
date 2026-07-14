@@ -126,6 +126,9 @@
     .ops-filters button { min-height: 34px; padding: 0 10px; }
     .ops-filters button.active { background: var(--blue); color: #fff; }
     .ops-results { display: grid; gap: 8px; }
+    .ops-operator-summary { display: grid; gap: 7px; }
+    .ops-operator-row { display: grid; grid-template-columns: minmax(150px, 1fr) repeat(4, auto); gap: 10px; align-items: center; padding: 9px 10px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; color: var(--muted); font-size: .82rem; }
+    .ops-operator-row strong { color: var(--dark); }
     .ops-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .95fr) minmax(0, 1.1fr) auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; font-size: .82rem; }
     .ops-row strong { color: var(--dark); }
     .ops-alert { color: #9d1d28; font-weight: 900; }
@@ -210,6 +213,7 @@
       .cloud-sale-row { grid-template-columns: 1fr; }
       .ops-summary { grid-template-columns: 1fr 1fr; }
       .ops-row { grid-template-columns: 1fr; }
+      .ops-operator-row { grid-template-columns: 1fr 1fr; }
       .admin-grid, .admin-user-row { grid-template-columns: 1fr; }
       .ops-action { align-items: stretch; flex-direction: column; }
       .ops-action button { width: 100%; }
@@ -439,6 +443,10 @@
       <section class="ops-report-panel private-workspace" id="opsReportPanel" hidden>
         <h3>Control GPS / Seguro</h3>
         <div class="ops-summary" id="opsSummary"></div>
+        <div class="process-panel" id="opsOperatorPanel">
+          <h4>Actividad del operador</h4>
+          <div class="ops-operator-summary" id="opsOperatorSummary"></div>
+        </div>
         <div class="ops-filters" id="opsFilters" aria-label="Filtros de control GPS y seguro">
           <button type="button" class="secondary active" data-ops-filter="all">Todos</button>
           <button type="button" class="secondary" data-ops-filter="insurance">Seguro</button>

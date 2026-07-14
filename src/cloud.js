@@ -35,6 +35,7 @@ const controls = {
   importStatus: byId('bulkImportStatus'),
   opsReport: byId('opsReportPanel'),
   opsSummary: byId('opsSummary'),
+  opsOperatorSummary: byId('opsOperatorSummary'),
   opsFilters: byId('opsFilters'),
   opsSearch: byId('opsSearch'),
   clearOpsSearch: byId('clearOpsSearch'),
@@ -1007,18 +1008,80 @@ function opsVisible(profile) {
   return true;
 }
 
-function renderOpsMetric(label, value, filter) {
-  const box = document.createElement('button');
-  box.type = 'button';
+function renderOpsMetric(label, value, filter = '') {
+  const box = document.createElement(filter ? 'button' : 'div');
+  if (filter) box.type = 'button';
   box.className = 'ops-metric';
-  box.dataset.opsFilter = filter;
-  box.classList.toggle('active', opsFilter === filter);
+  if (filter) {
+    box.dataset.opsFilter = filter;
+    box.classList.toggle('active', opsFilter === filter);
+  }
   const number = document.createElement('strong');
   number.textContent = value;
   const text = document.createElement('span');
   text.textContent = label;
   box.append(number, text);
   return box;
+}
+
+function isOperatorAction(operation) {
+  return operation && !String(operation.event_type || '').startsWith('proxima_revision_');
+}
+
+function startOfLocalDay(daysAgo = 0) {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() - daysAgo);
+  return date;
+}
+
+function renderOperatorSummary(operations) {
+  if (!controls.opsOperatorSummary) return;
+  controls.opsOperatorSummary.replaceChildren();
+  const operatorActions = operations.filter(isOperatorAction);
+  if (!operatorActions.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-history';
+    empty.textContent = 'Aun no hay acciones reales registradas por operadores.';
+    controls.opsOperatorSummary.append(empty);
+    return;
+  }
+  const today = startOfLocalDay();
+  const sevenDays = startOfLocalDay(6);
+  const byOperator = new Map();
+  operatorActions.forEach(operation => {
+    const key = operation.created_by || 'sin_usuario';
+    const name = operation.operator_name || `Usuario ${String(key).slice(0, 8)}`;
+    if (!byOperator.has(key)) {
+      byOperator.set(key, { name, total: 0, today: 0, week: 0, missingNotes: 0, latest: null });
+    }
+    const summary = byOperator.get(key);
+    const createdAt = new Date(operation.created_at || 0);
+    summary.total += 1;
+    if (createdAt >= today) summary.today += 1;
+    if (createdAt >= sevenDays) summary.week += 1;
+    if (String(operation.note || '').trim().length < 12) summary.missingNotes += 1;
+    if (!summary.latest || createdAt > new Date(summary.latest.created_at || 0)) summary.latest = operation;
+  });
+  [...byOperator.values()]
+    .sort((a, b) => b.week - a.week || b.total - a.total || a.name.localeCompare(b.name))
+    .forEach(summary => {
+      const row = document.createElement('div');
+      row.className = 'ops-operator-row';
+      const name = document.createElement('strong');
+      name.textContent = summary.name;
+      const todayText = document.createElement('span');
+      todayText.textContent = `Hoy: ${summary.today}`;
+      const weekText = document.createElement('span');
+      weekText.textContent = `7 dias: ${summary.week}`;
+      const totalText = document.createElement('span');
+      totalText.textContent = `Total: ${summary.total}`;
+      const latestText = document.createElement('span');
+      const latestDate = summary.latest?.created_at ? new Date(summary.latest.created_at).toLocaleString('en-US') : 'sin fecha';
+      latestText.textContent = `${summary.missingNotes ? `Sin nota: ${summary.missingNotes} | ` : ''}Ultima: ${latestDate}`;
+      row.append(name, todayText, weekText, totalText, latestText);
+      controls.opsOperatorSummary.append(row);
+    });
 }
 
 function messageTemplate(profile) {
@@ -1066,7 +1129,9 @@ function showOpsHistory(profile) {
     ? profile.operations.slice(0, 12).map(operation => {
       const date = operation.created_at ? new Date(operation.created_at).toLocaleString('en-US') : 'sin fecha';
       const nextAction = operation.payload?.ops_next_action ? ` | Proxima accion: ${operation.payload.ops_next_action}` : '';
-      const operator = operation.created_by ? ` | Usuario: ${String(operation.created_by).slice(0, 8)}` : '';
+      const operator = (operation.operator_name || operation.created_by)
+        ? ` | Operador: ${operation.operator_name || String(operation.created_by).slice(0, 8)}`
+        : '';
       return `- ${date}: ${operation.event_type} | ${operation.status}${operator}${nextAction}${operation.note ? ` | Nota: ${operation.note}` : ' | Sin nota'}`;
     }).join('\n')
     : '- Sin historial operativo registrado todavia.';
@@ -1074,6 +1139,10 @@ function showOpsHistory(profile) {
 }
 
 function renderOpsReport(profiles) {
+  const operations = profiles.flatMap(profile => profile.operations || []);
+  const operatorActions = operations.filter(isOperatorAction);
+  const today = startOfLocalDay();
+  const sevenDays = startOfLocalDay(6);
   controls.opsSummary.replaceChildren(
     renderOpsMetric('Clientes', profiles.length, 'all'),
     renderOpsMetric('Alertas seguro', profiles.filter(profile => profile.policyProblem).length, 'insurance'),
@@ -1084,8 +1153,12 @@ function renderOpsReport(profiles) {
     renderOpsMetric('Exceso millas', profiles.filter(profile => profile.gpsMileageExceeded).length, 'mileage'),
     renderOpsMetric('GAP / siniestro', profiles.filter(profile => profile.gapProblem || profile.gapOpen).length, 'gap'),
     renderOpsMetric('Vencidos', profiles.filter(profile => profile.overdue).length, 'overdue'),
-    renderOpsMetric('Auditoria operador', profiles.filter(profile => profile.noFollowUp || profile.noteProblem).length, 'operator')
+    renderOpsMetric('Auditoria operador', profiles.filter(profile => profile.noFollowUp || profile.noteProblem).length, 'operator'),
+    renderOpsMetric('Acciones hoy', operatorActions.filter(operation => new Date(operation.created_at || 0) >= today).length),
+    renderOpsMetric('Acciones 7 dias', operatorActions.filter(operation => new Date(operation.created_at || 0) >= sevenDays).length),
+    renderOpsMetric('Operadores activos', new Set(operatorActions.map(operation => operation.created_by).filter(Boolean)).size)
   );
+  renderOperatorSummary(operations);
 
   controls.opsResults.replaceChildren();
   const visibleProfiles = profiles.filter(opsVisible).sort((a, b) => {
@@ -1153,7 +1226,7 @@ function renderOpsReport(profiles) {
       profile.form.gap_has_coverage ? `GAP ${profile.form.gap_has_coverage}${profile.form.gap_issued_vin ? ` / VIN ${profile.form.gap_issued_vin}` : ''}` : 'GAP sin verificar',
       profile.gapOpen ? `GAP abierto ${daysText(profile.gapClaimDays)}` : '',
       profile.insuranceClaimOpen ? `Reclamo seguro ${daysText(profile.insuranceClaimDays)}` : '',
-      profile.latest ? `Ultimo trabajo ${daysText(profile.daysSinceOps)}: ${profile.latest.event_type} / ${profile.latest.status}` : 'Sin historial operativo',
+      profile.latest ? `Ultimo trabajo ${daysText(profile.daysSinceOps)}: ${profile.latest.event_type} / ${profile.latest.status}${profile.latest.operator_name ? ` por ${profile.latest.operator_name}` : ''}` : 'Sin historial operativo',
       profile.latest?.note ? `Nota: ${profile.latest.note.slice(0, 90)}` : 'Sin nota auditable'
     ].filter(Boolean).join(' | ');
     status.append(headline, detail);
@@ -1184,42 +1257,62 @@ function renderOpsReport(profiles) {
 
 async function loadOpsReport() {
   if (!supabase || !session?.user || !controls.opsReport) return;
-  const { data: sales, error: salesError } = await supabase
-    .from('doc_sales')
-    .select('id, customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at')
-    .order('created_at', { ascending: false })
-    .limit(200);
-  if (salesError) {
-    setCloudStatus(`No se pudo cargar Control GPS / Seguro: ${salesError.message}`, 'error');
-    return;
+  const pageSize = 500;
+  const sales = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from('doc_sales')
+      .select('id, customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (error) {
+      setCloudStatus(`No se pudo cargar Control GPS / Seguro: ${error.message}`, 'error');
+      return;
+    }
+    sales.push(...(data || []));
+    if ((data || []).length < pageSize) break;
   }
-  const saleIds = (sales || []).map(sale => sale.id);
-  let operations = [];
-  if (saleIds.length) {
+
+  const operations = [];
+  for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await supabase
       .from('doc_sale_operations')
       .select('id, sale_id, module, event_type, status, follow_up_at, note, payload, created_by, created_at')
-      .in('sale_id', saleIds)
       .eq('module', 'insurance_gps')
       .order('created_at', { ascending: false })
-      .limit(500);
+      .range(offset, offset + pageSize - 1);
     if (error) {
       if (error.code === '42P01' || /doc_sale_operations|relation/i.test(error.message || '')) {
         setCloudStatus('Control GPS / Seguro visible. Falta activar la tabla de auditoria en Supabase para guardar historial del operador.', 'error');
-        renderOpsReport((sales || []).map(sale => buildOpsProfile(sale, [])));
+        renderOpsReport(sales.map(sale => buildOpsProfile(sale, [])));
         return;
       }
       setCloudStatus(`No se pudo cargar historial GPS / Seguro: ${error.message}`, 'error');
       return;
     }
-    operations = data || [];
+    operations.push(...(data || []));
+    if ((data || []).length < pageSize) break;
   }
+
+  const operatorIds = [...new Set(operations.map(operation => operation.created_by).filter(Boolean))];
+  const operatorNames = new Map();
+  for (let index = 0; index < operatorIds.length; index += pageSize) {
+    const ids = operatorIds.slice(index, index + pageSize);
+    const { data, error } = await supabase
+      .from('doc_user_profiles')
+      .select('id, full_name')
+      .in('id', ids);
+    if (!error) (data || []).forEach(profile => operatorNames.set(profile.id, profile.full_name || 'Usuario sin nombre'));
+  }
+  operations.forEach(operation => {
+    operation.operator_name = operatorNames.get(operation.created_by) || `Usuario ${String(operation.created_by || '').slice(0, 8)}`;
+  });
   const bySale = new Map();
   operations.forEach(operation => {
     if (!bySale.has(operation.sale_id)) bySale.set(operation.sale_id, []);
     bySale.get(operation.sale_id).push(operation);
   });
-  renderOpsReport((sales || []).map(sale => buildOpsProfile(sale, bySale.get(sale.id) || [])));
+  renderOpsReport(sales.map(sale => buildOpsProfile(sale, bySale.get(sale.id) || [])));
 }
 
 function authHeaders() {
