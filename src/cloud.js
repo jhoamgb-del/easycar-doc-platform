@@ -536,6 +536,8 @@ async function saveInsuranceGpsReview(formData) {
   if (String(formData.insurance_gps_notes || '').trim().length < 12) {
     throw new Error('La nota de auditoria debe explicar que se verifico y que queda pendiente.');
   }
+  const isInsuranceAction = ['Verificacion seguro', 'Llamada seguro'].includes(formData.ops_action_type);
+  const isGpsAction = ['Verificacion GPS', 'Revision GPS'].includes(formData.ops_action_type);
   const gpsIssue = !formData.gps_imei
     || ['No instalado', 'No verificado', 'Expirado', 'Desconectado', 'Sin senal', 'Removido / alterado', 'No localizado'].includes(formData.gps_device_status)
     || ['No', 'No confirmado'].includes(formData.gps_battery_connected)
@@ -544,21 +546,33 @@ async function saveInsuranceGpsReview(formData) {
     || formData.gps_monthly_miles_status === 'Sobre 1500 millas'
     || isPastDue(formData.gps_service_expiration_date);
   const insuranceIssue = !formData.insurance_policy_number
-    || ['Pendiente', 'Cancelada', 'Vencida', 'No verificable'].includes(formData.insurance_status)
+    || ['Pendiente', 'Cancelada', 'Anulada', 'Vencida', 'Reposicion', 'No verificable'].includes(formData.insurance_status)
     || ['No', 'No confirmado'].includes(formData.insurance_payments_current)
     || ['No', 'No confirmado'].includes(formData.insurance_comprehensive)
     || ['No', 'No confirmado'].includes(formData.insurance_collision)
     || ['No', 'No confirmado'].includes(formData.insurance_lienholder)
     || formData.insurance_address_matches === 'No confirmado'
     || isPastDue(formData.insurance_expiration_date);
-  if ((gpsIssue || insuranceIssue) && !String(formData.ops_next_action || '').trim()) {
+  if (((isInsuranceAction && insuranceIssue) || (isGpsAction && gpsIssue)) && !String(formData.ops_next_action || '').trim()) {
     throw new Error('Hay una irregularidad de seguro o GPS. Define la proxima accion del operador.');
+  }
+  if (isInsuranceAction && insuranceIssue && !String(formData.insurance_status_reason || '').trim()) {
+    throw new Error('Explica el motivo o resultado de la verificacion de poliza.');
+  }
+  if (isGpsAction && gpsIssue && !String(formData.gps_status_reason || '').trim()) {
+    throw new Error('Explica el motivo o seguimiento requerido para la alerta GPS.');
+  }
+  if (['Cancelada', 'Anulada'].includes(formData.insurance_status) && !formData.insurance_cancelled_since) {
+    throw new Error('Indica desde que fecha la poliza esta cancelada o anulada.');
+  }
+  if (formData.insurance_status === 'Reposicion') {
+    if (!formData.recovery_event_date || !formData.recovery_last_location || !formData.recovery_policy_active_on_event) {
+      throw new Error('Para reposicion registra fecha, ultima ubicacion y si la poliza estaba activa el dia del repo.');
+    }
   }
   const sale = await saveSale(formData);
   const payload = insuranceGpsPayload(formData);
   const status = formData.ops_contact_result || formData.insurance_status || formData.gps_device_status || formData.gap_claim_status || 'Registrado';
-  const isInsuranceAction = /seguro|poliza/i.test(formData.ops_action_type || '');
-  const isGpsAction = /gps/i.test(formData.ops_action_type || '');
   const followUpAt = isInsuranceAction ? formData.insurance_next_review_date : isGpsAction ? formData.gps_next_review_date : formData.insurance_next_review_date || formData.gps_next_review_date || null;
   const rows = [{
     sale_id: sale.id,
@@ -1009,8 +1023,13 @@ function buildOpsProfile(sale, operations = []) {
   const gpsDaysSince = daysBetween(lastGpsReviewSource);
   const insuranceOverdue = insuranceDaysSince === null || insuranceDaysSince > 14 || isPastDue(form.insurance_next_review_date);
   const gpsOverdue = gpsDaysSince === null || gpsDaysSince > 10 || isPastDue(form.gps_next_review_date);
+  const insuranceCancelled = form.insurance_status === 'Cancelada';
+  const insuranceInvalidated = form.insurance_status === 'Anulada';
+  const insuranceExpired = form.insurance_status === 'Vencida' || isPastDue(form.insurance_expiration_date);
+  const insuranceRepossession = form.insurance_status === 'Reposicion';
+  const insuranceCancelledDays = (insuranceCancelled || insuranceInvalidated) ? daysBetween(form.insurance_cancelled_since) : null;
   const policyProblem = !form.insurance_policy_number
-    || ['Pendiente', 'Cancelada', 'Vencida', 'No verificable'].includes(form.insurance_status)
+    || ['Pendiente', 'Cancelada', 'Anulada', 'Vencida', 'Reposicion', 'No verificable'].includes(form.insurance_status)
     || form.insurance_comprehensive === 'No'
     || form.insurance_collision === 'No'
     || form.insurance_lienholder === 'No'
@@ -1047,7 +1066,9 @@ function buildOpsProfile(sale, operations = []) {
     || form.gap_vin_match === 'No'
     || form.gap_vin_match === 'No confirmado'
     || ['Cancelado', 'No emitido', 'No verificable'].includes(form.gap_contract_status);
-  const recoveryOpen = Boolean(form.recovery_event_type && form.recovery_event_type !== 'Ninguno');
+  const recoveryOpen = Boolean(form.recovery_event_type && form.recovery_event_type !== 'Ninguno') || insuranceRepossession;
+  const siniestroOpen = form.recovery_event_type === 'Siniestro' || insuranceClaimOpen;
+  const gapClaimOpen = ['GAP abierto', 'Esperando pago GAP'].includes(form.gap_claim_status);
   const daysSinceOps = daysBetween(latest?.created_at);
   const noteProblem = !latest || !String(latest.note || '').trim() || String(latest.note || '').trim().length < 12;
   const noFollowUp = !latest || (daysSinceOps !== null && daysSinceOps > 14);
@@ -1058,6 +1079,7 @@ function buildOpsProfile(sale, operations = []) {
     || (insuranceClaimOpen && (insuranceClaimDays === null || insuranceClaimDays >= 7));
   const alerts = [];
   if (policyProblem) alerts.push(insuranceOverdue ? `Seguro sin revisar ${daysText(insuranceDaysSince)}` : 'Seguro requiere accion');
+  if (insuranceCancelled || insuranceInvalidated) alerts.push(`Poliza ${String(form.insurance_status).toLowerCase()} ${daysText(insuranceCancelledDays)}`);
   if (gpsMissing) alerts.push('Vehiculo sin GPS');
   if (gpsExpired) alerts.push('GPS expirado');
   if (gpsOutsideFlorida) alerts.push('Vehiculo fuera de Florida');
@@ -1078,7 +1100,8 @@ function buildOpsProfile(sale, operations = []) {
   return {
     sale, form, operations, latest, policyProblem, gpsProblem, gpsMissing, gpsExpired,
     gpsOutsideFlorida, gpsLocationUnconfirmed, gpsMileageExceeded, gapProblem, gapOpen,
-    insuranceClaimOpen, recoveryOpen, noFollowUp, noteProblem, overdue, alerts,
+    insuranceClaimOpen, insuranceCancelled, insuranceInvalidated, insuranceExpired, insuranceRepossession,
+    insuranceCancelledDays, siniestroOpen, gapClaimOpen, recoveryOpen, noFollowUp, noteProblem, overdue, alerts,
     insuranceDaysSince, gpsDaysSince, gapClaimDays, insuranceClaimDays, daysSinceOps, dueToday
   };
 }
@@ -1107,7 +1130,8 @@ function opsVisible(profile) {
   if (opsFilter === 'gps_missing') return profile.gpsMissing;
   if (opsFilter === 'gps_expired') return profile.gpsExpired;
   if (opsFilter === 'mileage') return profile.gpsMileageExceeded;
-  if (opsFilter === 'gap') return profile.gapProblem || profile.gapOpen;
+  if (opsFilter === 'claims') return profile.siniestroOpen;
+  if (opsFilter === 'gap_claim') return profile.gapClaimOpen;
   if (opsFilter === 'recovery') return profile.recoveryOpen;
   if (opsFilter === 'overdue') return profile.overdue;
   if (opsFilter === 'operator') return profile.noFollowUp || profile.noteProblem;
@@ -1115,7 +1139,7 @@ function opsVisible(profile) {
   return true;
 }
 
-function renderOpsMetric(label, value, filter = '') {
+function renderOpsMetric(label, value, filter = '', detail = '') {
   const box = document.createElement(filter ? 'button' : 'div');
   if (filter) box.type = 'button';
   box.className = 'ops-metric';
@@ -1128,6 +1152,11 @@ function renderOpsMetric(label, value, filter = '') {
   const text = document.createElement('span');
   text.textContent = label;
   box.append(number, text);
+  if (detail) {
+    const detailText = document.createElement('em');
+    detailText.textContent = detail;
+    box.append(detailText);
+  }
   return box;
 }
 
@@ -1227,7 +1256,7 @@ function openOpsSale(profile) {
 function showOpsHistory(profile) {
   const header = `${profile.sale.customer_name || 'Cliente sin nombre'}\n${profile.sale.vehicle_description || 'Vehiculo'}${profile.sale.vin ? ` | VIN ${profile.sale.vin}` : ''}`;
   const current = [
-    `Seguro: ${profile.form.insurance_status || 'sin verificar'} | Poliza: ${profile.form.insurance_policy_number || 'sin numero'} | Vence: ${profile.form.insurance_expiration_date || 'sin fecha'} | Sin revisar: ${daysText(profile.insuranceDaysSince)}`,
+    `Seguro: ${profile.form.insurance_status || 'sin verificar'} | Poliza: ${profile.form.insurance_policy_number || 'sin numero'} | Vence: ${profile.form.insurance_expiration_date || 'sin fecha'} | Cancelada/anulada desde: ${profile.form.insurance_cancelled_since || 'no aplica'} | Sin revisar: ${daysText(profile.insuranceDaysSince)}`,
     `GPS: ${profile.form.gps_device_status || 'sin verificar'} | IMEI: ${profile.form.gps_imei || 'sin IMEI'} | Ubicacion: ${profile.form.gps_last_location || 'sin ubicacion'} (${profile.form.gps_location_jurisdiction || 'por confirmar'}) | Vence servicio: ${profile.form.gps_service_expiration_date || 'sin fecha'} | Millas periodo: ${profile.form.gps_monthly_miles || 'sin dato'} | Sin revisar: ${daysText(profile.gpsDaysSince)}`,
     `GAP: ${profile.form.gap_has_coverage || 'sin verificar'} | Contrato: ${profile.form.gap_contract_number || 'sin contrato'} | VIN GAP: ${profile.form.gap_issued_vin || 'sin VIN'} | Reclamo abierto: ${daysText(profile.gapClaimDays)}`,
     `Evento: ${profile.form.recovery_event_type || 'ninguno'} | Fecha: ${profile.form.recovery_event_date || 'sin fecha'} | Poliza activa ese dia: ${profile.form.recovery_policy_active_on_event || 'sin confirmar'}`
@@ -1251,17 +1280,13 @@ function renderOpsReport(profiles) {
   const today = startOfLocalDay();
   const sevenDays = startOfLocalDay(6);
   controls.opsSummary.replaceChildren(
-    renderOpsMetric('Clientes', profiles.length, 'all'),
-    renderOpsMetric('Alertas seguro', profiles.filter(profile => profile.policyProblem).length, 'insurance'),
-    renderOpsMetric('Alertas GPS', profiles.filter(profile => profile.gpsProblem).length, 'gps'),
-    renderOpsMetric('Fuera de Florida', profiles.filter(profile => profile.gpsOutsideFlorida).length, 'outside_florida'),
-    renderOpsMetric('Sin GPS', profiles.filter(profile => profile.gpsMissing).length, 'gps_missing'),
-    renderOpsMetric('GPS expirados', profiles.filter(profile => profile.gpsExpired).length, 'gps_expired'),
-    renderOpsMetric('Exceso millas', profiles.filter(profile => profile.gpsMileageExceeded).length, 'mileage'),
-    renderOpsMetric('GAP / siniestro', profiles.filter(profile => profile.gapProblem || profile.gapOpen).length, 'gap'),
-    renderOpsMetric('Agenda de hoy', profiles.filter(profile => profile.dueToday).length, 'agenda'),
-    renderOpsMetric('Vencidos', profiles.filter(profile => profile.overdue).length, 'overdue'),
-    renderOpsMetric('Auditoria operador', profiles.filter(profile => profile.noFollowUp || profile.noteProblem).length, 'operator'),
+    renderOpsMetric('Clientes', profiles.length, 'all', 'Abrir todos los expedientes'),
+    renderOpsMetric('Agenda de hoy', profiles.filter(profile => profile.dueToday).length, 'agenda', 'Verificaciones y llamadas que vencen hoy'),
+    renderOpsMetric('Alertas de seguro', profiles.filter(profile => profile.policyProblem).length, 'insurance', `${profiles.filter(profile => profile.insuranceExpired).length} vencidas · ${profiles.filter(profile => profile.insuranceCancelled).length} canceladas · ${profiles.filter(profile => profile.insuranceInvalidated).length} anuladas`),
+    renderOpsMetric('Siniestros', profiles.filter(profile => profile.siniestroOpen).length, 'claims', 'Reclamos abiertos con el seguro'),
+    renderOpsMetric('GAP en reclamo', profiles.filter(profile => profile.gapClaimOpen).length, 'gap_claim', 'Casos abiertos o esperando pago GAP'),
+    renderOpsMetric('Alertas GPS', profiles.filter(profile => profile.gpsProblem).length, 'gps', `${profiles.filter(profile => profile.gpsMissing).length} sin GPS · ${profiles.filter(profile => profile.gpsExpired).length} expirados · ${profiles.filter(profile => profile.gpsMileageExceeded).length} exceso millas`),
+    renderOpsMetric('Auditoria operador', profiles.filter(profile => profile.noFollowUp || profile.noteProblem).length, 'operator', 'Sin nota o sin seguimiento oportuno'),
     renderOpsMetric('Acciones hoy', operatorActions.filter(operation => new Date(operation.created_at || 0) >= today).length),
     renderOpsMetric('Acciones 7 dias', operatorActions.filter(operation => new Date(operation.created_at || 0) >= sevenDays).length),
     renderOpsMetric('Operadores activos', new Set(operatorActions.map(operation => operation.created_by).filter(Boolean)).size)
@@ -1326,6 +1351,8 @@ function renderOpsReport(profiles) {
     detail.className = 'archive-meta';
     detail.textContent = [
       `Seguro: ${daysText(profile.insuranceDaysSince)} desde revision / prox. ${profile.form.insurance_next_review_date ? formatDateDisplay(profile.form.insurance_next_review_date) : 'sin fecha'}`,
+      profile.insuranceCancelled || profile.insuranceInvalidated ? `Poliza ${String(profile.form.insurance_status).toLowerCase()} desde ${profile.form.insurance_cancelled_since ? formatDateDisplay(profile.form.insurance_cancelled_since) : 'sin fecha'} (${daysText(profile.insuranceCancelledDays)})` : '',
+      profile.insuranceRepossession ? `Reposicion: poliza en evento ${profile.form.recovery_policy_active_on_event || 'sin confirmar'} | ubicacion ${profile.form.recovery_last_location || 'sin confirmar'}` : '',
       `GPS: ${daysText(profile.gpsDaysSince)} desde revision / prox. ${profile.form.gps_next_review_date ? formatDateDisplay(profile.form.gps_next_review_date) : 'sin fecha'}`,
       profile.gpsOutsideFlorida ? 'Alerta: fuera de Florida' : '',
       profile.gpsMissing ? 'Alerta: sin GPS instalado' : '',

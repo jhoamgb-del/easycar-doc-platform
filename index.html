@@ -122,6 +122,7 @@
     .ops-metric.active { border-color: var(--blue); background: #eaf2ff; box-shadow: inset 4px 0 0 var(--blue); }
     .ops-metric strong { display: block; color: var(--dark); font-size: 1.25rem; }
     .ops-metric span { display: block; color: var(--muted); font-size: .74rem; font-weight: 800; text-transform: uppercase; }
+    .ops-metric em { display: block; margin-top: 4px; color: var(--muted); font-size: .72rem; font-style: normal; line-height: 1.25; }
     .ops-filters { display: flex; gap: 8px; flex-wrap: wrap; }
     .ops-filters button { min-height: 34px; padding: 0 10px; }
     .ops-filters button.active { background: var(--blue); color: #fff; }
@@ -496,12 +497,10 @@
         <label>Fecha de venta <input id="transaction_date" type="date"></label>
         <label class="insurance-only">Fecha carga en DOC <input id="record_loaded_date" type="date" readonly></label>
 
-        <div class="section-title insurance-only">Identificacion para Seguro / GPS</div>
-        <div class="storage-note insurance-only">El expediente hereda cliente, VIN, stock y vehiculo. Para ventas antiguas, usa la fecha real de venta y deja fecha de carga en DOC como constancia de cuando se incorporo al sistema.</div>
         <label class="insurance-only">Fecha carga del carro <input id="vehicle_loaded_date" type="date"></label>
 
-        <div class="section-title insurance-only">Identificacion de poliza</div>
-        <div class="storage-note insurance-only">Registra la poliza una sola vez. No hay integracion API de seguro en este formulario. Cada verificacion posterior queda como un registro separado y auditable.</div>
+        <div class="section-title insurance-only">POLIZA DE SEGURO</div>
+        <div class="storage-note insurance-only">Identifica la poliza una vez. Cliente, VIN, stock y vehiculo ya estan heredados del expediente central.</div>
         <label class="insurance-only">Proveedor seguro <input id="insurance_provider"></label>
         <label class="insurance-only">Numero de poliza <input id="insurance_policy_number"></label>
         <label class="insurance-only">Telefono agencia / seguro <input id="insurance_agency_phone"></label>
@@ -515,7 +514,7 @@
         <label class="insurance-only">Direccion que aparece en la poliza <input id="insurance_policy_address" placeholder="Completa si no coincide"></label>
         <label class="insurance-only">Poliza cancelada desde <input id="insurance_cancelled_since" type="date"></label>
 
-        <div class="section-title insurance-only">Agregar verificacion de seguro</div>
+        <div class="section-title insurance-only">VERIFICACION DE LA POLIZA</div>
         <div class="storage-note insurance-only" id="insuranceGpsProtocolStatus">Seguro cada 14 dias. La fecha, usuario y hora se archivan al registrar la verificacion.</div>
         <label class="insurance-only">Fecha de verificacion seguro <input id="insurance_verified_date" type="date"></label>
         <label class="insurance-only">Estatus poliza
@@ -524,7 +523,9 @@
             <option value="Activa">Activa</option>
             <option value="Pendiente">Pendiente</option>
             <option value="Cancelada">Cancelada</option>
+            <option value="Anulada">Anulada</option>
             <option value="Vencida">Vencida</option>
+            <option value="Reposicion">Reposicion</option>
             <option value="No verificable">No verificable</option>
           </select>
         </label>
@@ -537,7 +538,7 @@
             <option value="No confirmado">No confirmado</option>
           </select>
         </label>
-        <label class="insurance-only">Comprehensive
+        <label class="insurance-only">Comprehensive + Collision
           <select id="insurance_comprehensive">
             <option value=""></option>
             <option value="Si">Si</option>
@@ -545,14 +546,7 @@
             <option value="No confirmado">No confirmado</option>
           </select>
         </label>
-        <label class="insurance-only">Collision
-          <select id="insurance_collision">
-            <option value=""></option>
-            <option value="Si">Si</option>
-            <option value="No">No</option>
-            <option value="No confirmado">No confirmado</option>
-          </select>
-        </label>
+        <input id="insurance_collision" type="hidden">
         <label class="insurance-only">EasyCar como lien holder
           <select id="insurance_lienholder">
             <option value=""></option>
@@ -562,7 +556,7 @@
           </select>
         </label>
         <label class="full insurance-only">Motivo / resultado de verificacion de seguro <textarea id="insurance_status_reason" placeholder="Obligatorio si no esta activa o falta una cobertura"></textarea></label>
-        <div class="process-actions insurance-only"><button type="button" class="secondary" id="prepareInsuranceVerification">Preparar verificacion de seguro</button></div>
+        <div class="process-actions insurance-only"><button type="button" class="secondary" id="prepareInsuranceVerification">Agregar verificacion de poliza</button></div>
         <div class="process-panel insurance-only" id="insuranceActionPanel" hidden>
           <h4>Accion requerida por seguro</h4>
           <p id="insuranceActionText"></p>
@@ -571,7 +565,7 @@
           </div>
         </div>
 
-        <div class="section-title insurance-only">Identificacion GPS</div>
+        <div class="section-title insurance-only">GPS</div>
         <div class="storage-note insurance-only">Identifica el equipo una vez. Las credenciales de API nunca se escriben en esta pantalla: se configuran de forma segura en el servidor cuando los proveedores Voltswitch y Advantage las entreguen.</div>
         <label class="insurance-only">GPS IMEI / numero <input id="gps_imei"></label>
         <label class="insurance-only">Proveedor GPS <input id="gps_provider" list="gpsProviderOptions" placeholder="Voltswitch o Advantage"></label>
@@ -584,7 +578,7 @@
           <select id="gps_battery_connected"><option value=""></option><option value="Si">Si</option><option value="No">No</option><option value="No confirmado">No confirmado</option></select>
         </label>
 
-        <div class="section-title insurance-only">Agregar verificacion GPS</div>
+        <div class="section-title insurance-only">VERIFICACION GPS</div>
         <div class="storage-note insurance-only">GPS cada 10 dias. Si no esta activo, esta expirado, removido o fuera de Florida, el expediente queda en alerta roja y exige seguimiento interno.</div>
         <label class="insurance-only">Fecha de verificacion GPS <input id="gps_first_review_date" type="date"></label>
         <label class="insurance-only">Estatus GPS
@@ -623,13 +617,13 @@
             <option value="No calculado">No calculado</option>
           </select>
         </label>
-        <div class="process-actions insurance-only"><button type="button" class="secondary" id="prepareGpsVerification">Preparar verificacion GPS</button></div>
+        <div class="process-actions insurance-only"><button type="button" class="secondary" id="prepareGpsVerification">Agregar verificacion GPS</button></div>
         <div class="process-panel insurance-only" id="gpsActionPanel" hidden>
           <h4>Alerta interna GPS</h4>
           <p id="gpsActionText"></p>
         </div>
 
-        <div class="section-title insurance-only">Repo / Entrega / Siniestro / GAP</div>
+        <div class="section-title insurance-only">REPOSICION / ENTREGA / SINIESTRO / GAP</div>
         <label class="insurance-only">Evento relacionado
           <select id="recovery_event_type">
             <option value=""></option>
@@ -1345,11 +1339,15 @@
     }
     function isInsuranceProblem() {
       return !val('insurance_policy_number')
-        || ['Pendiente', 'Cancelada', 'Vencida', 'No verificable'].includes(val('insurance_status'))
+        || ['Pendiente', 'Cancelada', 'Anulada', 'Vencida', 'Reposicion', 'No verificable'].includes(val('insurance_status'))
         || ['No', 'No confirmado'].includes(val('insurance_payments_current'))
         || ['No', 'No confirmado'].includes(val('insurance_comprehensive'))
         || ['No', 'No confirmado'].includes(val('insurance_collision'))
         || ['No', 'No confirmado'].includes(val('insurance_lienholder'));
+    }
+    function syncInsuranceCoverage() {
+      const combined = val('insurance_comprehensive');
+      if ($('insurance_collision')) $('insurance_collision').value = combined;
     }
     function isDatePast(value) {
       if (!value) return false;
@@ -1410,12 +1408,12 @@
       const insuranceProblem = isInsuranceProblem();
       const gpsProblem = isGpsProblem();
       const eventType = val('recovery_event_type');
-      const recoveryOpen = ['Repo', 'Entrega voluntaria'].includes(eventType);
+      const recoveryOpen = ['Repo', 'Entrega voluntaria'].includes(eventType) || val('insurance_status') === 'Reposicion';
       const claimOpen = isClaimOpen() || eventType === 'Siniestro';
       updatePanel(
         'insuranceActionPanel',
         insuranceProblem,
-        insuranceProblem && ['Cancelada', 'Vencida', 'No verificable'].includes(val('insurance_status')) ? 'critical' : 'warn',
+        insuranceProblem && ['Cancelada', 'Anulada', 'Vencida', 'Reposicion', 'No verificable'].includes(val('insurance_status')) ? 'critical' : 'warn',
         'insuranceActionText',
         insuranceProblem
           ? `Seguro requiere accion: estatus ${val('insurance_status') || 'sin estatus'}, poliza ${val('insurance_policy_number') || 'sin numero'}, vence ${val('insurance_expiration_date') || 'sin fecha'}. Notifica al cliente y registra a quien llamaste, fecha, resultado y proxima accion.`
@@ -1436,7 +1434,7 @@
         'critical',
         'recoveryActionText',
         recoveryOpen
-          ? `${eventType}: confirma ultima ubicacion del carro, fecha del evento, si la poliza estaba activa ese dia y si hay danos. Si hubo danos y la poliza estaba vigente, deja nota para posible reclamo al seguro.`
+          ? `${eventType || 'Reposicion'}: confirma fecha, ultima ubicacion del carro, si la poliza estaba activa el dia del repo y desde cuando estaba cancelada/anulada. Si llego con danos y la poliza estaba vigente, deja nota para posible reclamo al seguro.`
           : ''
       );
       updatePanel(
@@ -2267,6 +2265,7 @@
     }
     ids.forEach(id => $(id)?.addEventListener('input', () => {
       if (id === 'transaction_date') syncSaleDates();
+      if (id === 'insurance_comprehensive') syncInsuranceCoverage();
       if (id === 'gps_last_location' || id === 'gps_monthly_miles') updateGpsLocationAndMileage();
       if (id === 'vehicle_loaded_date' || id.startsWith('insurance_') || id.startsWith('gps_')) updateInsuranceGpsSchedule();
       if (id === 'vin' || id.startsWith('gap_')) updateGapVinMatch();
@@ -2278,6 +2277,7 @@
     }));
     ids.forEach(id => $(id)?.addEventListener('change', () => {
       if (id === 'transaction_date') syncSaleDates();
+      if (id === 'insurance_comprehensive') syncInsuranceCoverage();
       if (id === 'gps_last_location' || id === 'gps_monthly_miles') updateGpsLocationAndMileage();
       if (id === 'vehicle_loaded_date' || id.startsWith('insurance_') || id.startsWith('gps_')) updateInsuranceGpsSchedule();
       if (id === 'vin' || id.startsWith('gap_')) updateGapVinMatch();
@@ -2296,17 +2296,24 @@
     $('copyInsuranceNotice')?.addEventListener('click', () => copyPreparedText(insuranceNoticeText(), 'Aviso de seguro'));
     $('prepareInsuranceVerification')?.addEventListener('click', () => {
       $('ops_action_type').value = 'Verificacion seguro';
-      $('ops_contact_result').value = 'Completado';
-      if (!$('insurance_verified_date').value) $('insurance_verified_date').value = todayInputValue();
+      $('ops_contact_result').value = '';
+      $('insurance_verified_date').value = todayInputValue();
+      $('insurance_status_reason').value = '';
+      $('ops_next_action').value = '';
+      $('insurance_gps_notes').value = '';
+      syncInsuranceCoverage();
       updateInsuranceGpsSchedule();
-      $('insurance_gps_notes')?.focus();
+      $('insurance_status')?.focus();
     });
     $('prepareGpsVerification')?.addEventListener('click', () => {
       $('ops_action_type').value = 'Verificacion GPS';
-      $('ops_contact_result').value = 'Completado';
-      if (!$('gps_first_review_date').value) $('gps_first_review_date').value = todayInputValue();
+      $('ops_contact_result').value = '';
+      $('gps_first_review_date').value = todayInputValue();
+      $('gps_status_reason').value = '';
+      $('ops_next_action').value = '';
+      $('insurance_gps_notes').value = '';
       updateInsuranceGpsSchedule();
-      $('insurance_gps_notes')?.focus();
+      $('gps_device_status')?.focus();
     });
     $('saveSale').addEventListener('click', saveSale);
     $('saveInsuranceGpsReview').addEventListener('click', saveInsuranceGpsReview);
@@ -2324,6 +2331,7 @@
     ensureDefaultDates();
     updateInsuranceGpsSchedule();
     updateGpsLocationAndMileage();
+    syncInsuranceCoverage();
     updateGapVinMatch();
     updateOperationalDialogs();
     renderDocs();
@@ -2338,6 +2346,8 @@
         });
         setSaleType(formData?.sale_type);
         ensureDefaultDates();
+        if (!$('insurance_comprehensive').value && $('insurance_collision')?.value) $('insurance_comprehensive').value = $('insurance_collision').value;
+        syncInsuranceCoverage();
         updateGpsLocationAndMileage();
         updateGapVinMatch();
         renderDocs();
@@ -2354,6 +2364,7 @@
         if ($('surrender_exterior')) $('surrender_exterior').value = 'No Visible Damage';
         if ($('surrender_mechanical')) $('surrender_mechanical').value = 'Starts';
         ensureDefaultDates();
+        syncInsuranceCoverage();
         updateInsuranceGpsSchedule();
         updateGapVinMatch();
         renderDocs();
