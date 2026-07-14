@@ -217,9 +217,14 @@
       .schedule-grid label { grid-column: 2; }
       .actions button { width: 100%; }
       .mode-tabs { grid-template-columns: 1fr; }
-      .doc { padding: 20px; }
-      .doc table { table-layout: auto; }
-      .doc td { display: block; width: 100%; }
+      .docs-wrap, .doc { min-width: 0; max-width: 100%; }
+      .doc { width: 100%; padding: 20px; overflow: hidden; }
+      .doc table { max-width: 100%; table-layout: auto; }
+      .doc td { display: block; width: 100%; overflow-wrap: anywhere; }
+      .doc h2, .doc h3, .doc p { overflow-wrap: anywhere; }
+      .source-name { overflow-wrap: anywhere; }
+      .bilingual-title { grid-template-columns: 1fr; gap: 8px; }
+      .bilingual-title span + span { border-left: 0; border-top: 1px solid var(--line); padding: 8px 0 0; }
       .sale-row { grid-template-columns: 1fr; }
       .cloud-panel { grid-template-columns: 1fr; }
       .cloud-auth, .cloud-user, .workflow-actions { align-items: stretch; flex-direction: column; }
