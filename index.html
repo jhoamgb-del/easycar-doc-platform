@@ -100,6 +100,9 @@
     .cloud-auth button { min-height: 42px; }
     .cloud-user { display: none; align-items: center; gap: 10px; }
     .cloud-user.visible { display: flex; }
+    .password-recovery { display: none; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: end; padding: 14px; border: 1px solid #b9cbe4; border-left: 5px solid var(--blue); border-radius: 6px; background: #f5f9ff; }
+    .password-recovery.visible { display: grid; }
+    .password-recovery p { grid-column: 1 / -1; margin: 0; color: #34445e; font-size: .86rem; line-height: 1.4; }
     .workflow-actions { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid #d5e1f1; }
     .workflow-actions button:disabled { opacity: .48; cursor: not-allowed; }
     .workflow-label { width: 100%; color: var(--dark); font-size: .82rem; font-weight: 900; text-transform: uppercase; }
@@ -229,6 +232,7 @@
       .cloud-panel { grid-template-columns: 1fr; }
       .cloud-auth, .cloud-user, .workflow-actions { align-items: stretch; flex-direction: column; }
       .cloud-auth label { min-width: 0; max-width: none; width: 100%; }
+      .password-recovery { grid-template-columns: 1fr; }
       .cloud-sale-row { grid-template-columns: 1fr; }
       .ops-summary { grid-template-columns: 1fr 1fr; }
       .ops-row { grid-template-columns: 1fr; }
@@ -357,11 +361,18 @@
           <label>Correo del vendedor <input id="sellerEmail" type="email" autocomplete="email" placeholder="sales@easycarus.com"></label>
           <label>Contrasena <input id="sellerPassword" type="password" autocomplete="current-password"></label>
           <button type="button" id="sendLoginLink">Entrar</button>
+          <button type="button" class="secondary" id="requestPasswordReset">Recuperar contrasena</button>
         </div>
         <div class="cloud-user" id="cloudUser">
           <strong id="cloudUserEmail"></strong>
           <button type="button" class="secondary" id="signOutSeller">Salir</button>
         </div>
+        <section class="password-recovery" id="passwordRecovery" aria-labelledby="passwordRecoveryTitle" hidden>
+          <p id="passwordRecoveryTitle">Crea una nueva contrasena para tu cuenta de EasyCar.</p>
+          <label>Nueva contrasena <input id="recoveryPassword" type="password" autocomplete="new-password"></label>
+          <label>Confirmar contrasena <input id="recoveryPasswordConfirm" type="password" autocomplete="new-password"></label>
+          <button type="button" id="saveRecoveredPassword">Guardar nueva contrasena</button>
+        </section>
         <div class="workflow-actions">
           <div class="workflow-label">Acciones de la venta</div>
           <span class="sale-badge" id="cloudSaleBadge">Venta nueva sin guardar</span>

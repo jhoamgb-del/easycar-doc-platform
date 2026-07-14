@@ -17,6 +17,11 @@ const controls = {
   sellerEmail: byId('sellerEmail'),
   sellerPassword: byId('sellerPassword'),
   sendLogin: byId('sendLoginLink'),
+  requestPasswordReset: byId('requestPasswordReset'),
+  passwordRecovery: byId('passwordRecovery'),
+  recoveryPassword: byId('recoveryPassword'),
+  recoveryPasswordConfirm: byId('recoveryPasswordConfirm'),
+  saveRecoveredPassword: byId('saveRecoveredPassword'),
   signOut: byId('signOutSeller'),
   newSale: byId('newCloudSale'),
   sendSignature: byId('sendForSignature'),
@@ -1637,6 +1642,56 @@ async function sendLoginLink() {
   }
 }
 
+function showPasswordRecovery() {
+  controls.passwordRecovery.hidden = false;
+  controls.passwordRecovery.classList.add('visible');
+  controls.recoveryPassword.focus();
+  setCloudStatus('Enlace confirmado. Crea y guarda una nueva contrasena para continuar.', 'good');
+}
+
+function hidePasswordRecovery() {
+  controls.passwordRecovery.classList.remove('visible');
+  controls.passwordRecovery.hidden = true;
+  controls.recoveryPassword.value = '';
+  controls.recoveryPasswordConfirm.value = '';
+}
+
+async function requestPasswordReset() {
+  const email = controls.sellerEmail.value.trim();
+  if (!email) return setCloudStatus('Escribe tu correo para recibir el enlace de recuperacion.', 'error');
+  controls.requestPasswordReset.disabled = true;
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/?recovery=password`
+    });
+    if (error) throw error;
+    setCloudStatus('Si el correo esta autorizado, recibira un enlace seguro para crear una nueva contrasena.', 'good');
+  } catch (error) {
+    setCloudStatus('No se pudo solicitar la recuperacion. Intenta de nuevo o contacta al administrador.', 'error');
+  } finally {
+    controls.requestPasswordReset.disabled = false;
+  }
+}
+
+async function saveRecoveredPassword() {
+  const password = controls.recoveryPassword.value;
+  const confirmation = controls.recoveryPasswordConfirm.value;
+  if (password.length < 12) return setCloudStatus('La nueva contrasena debe tener al menos 12 caracteres.', 'error');
+  if (password !== confirmation) return setCloudStatus('Las contrasenas no coinciden.', 'error');
+  controls.saveRecoveredPassword.disabled = true;
+  try {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) throw error;
+    hidePasswordRecovery();
+    window.history.replaceState({}, document.title, window.location.pathname);
+    setCloudStatus('Contrasena actualizada correctamente.', 'good');
+  } catch (error) {
+    setCloudStatus('No se pudo actualizar la contrasena. Solicita un nuevo enlace de recuperacion.', 'error');
+  } finally {
+    controls.saveRecoveredPassword.disabled = false;
+  }
+}
+
 function newSale() {
   setCurrentSale(null);
   app.clearForm();
@@ -1652,6 +1707,8 @@ if (!configured) {
   setCloudStatus('Supabase no esta configurado en Vercel. Puedes llenar e imprimir, pero no guardar ni enviar firma digital.');
 } else {
   controls.sendLogin.addEventListener('click', sendLoginLink);
+  controls.requestPasswordReset.addEventListener('click', requestPasswordReset);
+  controls.saveRecoveredPassword.addEventListener('click', () => saveRecoveredPassword());
   controls.sellerPassword.addEventListener('keydown', event => {
     if (event.key === 'Enter') {
       event.preventDefault();
@@ -1692,5 +1749,8 @@ if (!configured) {
 
   const { data } = await supabase.auth.getSession();
   setSessionUi(data.session);
-  supabase.auth.onAuthStateChange((_event, nextSession) => setSessionUi(nextSession));
+  supabase.auth.onAuthStateChange((event, nextSession) => {
+    setSessionUi(nextSession);
+    if (event === 'PASSWORD_RECOVERY') showPasswordRecovery();
+  });
 }
