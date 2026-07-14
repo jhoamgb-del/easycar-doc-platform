@@ -849,12 +849,12 @@ function renderArchiveResults(sales) {
         : 'Aun no hay PDF firmado archivado';
       docs.append(pending);
     } else {
-      documents.forEach((document, index) => {
+      documents.forEach((archivedDocument, index) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'secondary';
-        button.textContent = document.original_name || `Documento firmado ${index + 1}`;
-        button.addEventListener('click', () => openArchivedDocument(document.storage_path).catch(error => setCloudStatus(error.message, 'error')));
+        button.textContent = archivedDocument.original_name || `Documento firmado ${index + 1}`;
+        button.addEventListener('click', () => openArchivedDocument(archivedDocument.storage_path).catch(error => setCloudStatus(error.message, 'error')));
         docs.append(button);
       });
     }
