@@ -1,4 +1,4 @@
-const CACHE_NAME = 'doc-easycar-shell-v1';
+const CACHE_NAME = 'doc-easycar-shell-v2';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/easycar-docuseal-logo-400.png'];
 
 self.addEventListener('install', (event) => {

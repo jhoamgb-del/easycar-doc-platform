@@ -763,8 +763,9 @@
         <label class="full insurance-only">Proxima accion del operador <input id="ops_next_action" placeholder="Ej. llamar agencia, pedir poliza, verificar ubicacion, abrir GAP"></label>
         <label class="full insurance-only">Notas Seguros / GPS / GAP <textarea id="insurance_gps_notes"></textarea></label>
         <div class="ops-action insurance-only">
-          <button type="button" id="saveInsuranceGpsReview">Registrar seguimiento</button>
-          <div id="insuranceGpsStatus" class="status">La accion, resultado y nota son obligatorios para dejar evidencia auditable con usuario, dia y hora.</div>
+          <button type="button" class="secondary" id="saveInsuranceGpsData">Guardar datos de Seguro y GPS</button>
+          <button type="button" id="saveInsuranceGpsReview">Registrar verificacion / seguimiento</button>
+          <div id="insuranceGpsStatus" class="status">Guarda primero los datos del expediente. Cada verificacion requiere accion, resultado y nota para dejar evidencia con usuario, dia y hora.</div>
         </div>
         <div class="process-panel insurance-only" id="operationHistoryPanel">
           <h4>Historial de verificaciones y seguimiento</h4>
@@ -2239,7 +2240,7 @@
         storeLocalSale(cloudSale ? localSaleSummary(sessionId, formData) : { id: sessionId, created_at: new Date().toISOString(), form_data: formData });
         renderSalesHistory();
         if (!cloudSale) {
-          setSaveStatus(`Venta guardada en este navegador. ID: ${sessionId.slice(0, 8)}. La nube central aun no esta conectada.`, 'good');
+          setSaveStatus(`No se guardo en el expediente central. Se conserva una copia pendiente en este navegador: ${sessionId.slice(0, 8)}. Inicia sesion y vuelve a guardar.`, 'warn');
           return;
         }
         setSaveStatus(`Venta guardada en el expediente central. El navegador conserva solo un resumen local. ID: ${sessionId.slice(0, 8)}`, 'good');
@@ -2248,7 +2249,22 @@
         const localId = crypto.randomUUID();
         storeLocalSale({ id: localId, created_at: new Date().toISOString(), form_data: formData });
         renderSalesHistory();
-        setSaveStatus(`La copia local quedo guardada, pero fallo el expediente central: ${error.message || 'revisa Supabase'}`, 'warn');
+        setSaveStatus(`No se guardo en el expediente central. Se conserva una copia pendiente local: ${error.message || 'revisa Supabase'}`, 'warn');
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+    async function saveInsuranceGpsData() {
+      const button = $('saveInsuranceGpsData');
+      if (button) button.disabled = true;
+      setInsuranceGpsStatus('Guardando datos de Seguro y GPS...', '');
+      try {
+        const formData = collectFormData();
+        const cloudSale = window.EasyCarCloud ? await window.EasyCarCloud.saveSale(formData) : null;
+        if (!cloudSale) throw new Error('Inicia sesion con un usuario autorizado para guardar en el expediente central.');
+        setInsuranceGpsStatus(`Datos guardados en el expediente central. ID: ${cloudSale.id.slice(0, 8)}`, 'good');
+      } catch (error) {
+        setInsuranceGpsStatus(`No se guardaron los datos centrales: ${error.message || 'revisa Supabase'}`, 'warn');
       } finally {
         if (button) button.disabled = false;
       }
@@ -2281,8 +2297,7 @@
         }
         const cloudResult = window.EasyCarCloud ? await window.EasyCarCloud.saveInsuranceGpsReview(formData) : null;
         if (!cloudResult) {
-          await saveSale();
-          setInsuranceGpsStatus('Revision guardada en la venta local. Para auditoria central debes entrar con usuario autorizado.', 'warn');
+          setInsuranceGpsStatus('No se registro la verificacion en la auditoria central. Inicia sesion y guarda primero los datos del expediente.', 'warn');
           return;
         }
         setInsuranceGpsStatus(`Revision registrada en expediente central. Evento: ${cloudResult.id.slice(0, 8)}`, 'good');
@@ -2345,6 +2360,7 @@
       $('gps_device_status')?.focus();
     });
     $('saveSale').addEventListener('click', saveSale);
+    $('saveInsuranceGpsData')?.addEventListener('click', saveInsuranceGpsData);
     $('saveInsuranceGpsReview').addEventListener('click', saveInsuranceGpsReview);
     $('sale_type_bhph').addEventListener('change', () => setSaleType('BHPH'));
     $('sale_type_bank').addEventListener('change', () => setSaleType('BANCO'));

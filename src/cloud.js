@@ -61,6 +61,8 @@ let session = null;
 let currentSaleId = null;
 let opsFilter = 'all';
 let autosaveTimer = null;
+let realtimeChannel = null;
+let realtimeRefreshTimer = null;
 
 function setCloudStatus(message, tone = '') {
   controls.status.textContent = message;
@@ -100,7 +102,34 @@ function setSessionUi(nextSession) {
     loadArchive();
     loadOpsReport();
     loadAdminUsers();
+    subscribeToCentralUpdates();
+  } else {
+    unsubscribeFromCentralUpdates();
   }
+}
+
+function unsubscribeFromCentralUpdates() {
+  if (realtimeChannel && supabase) supabase.removeChannel(realtimeChannel);
+  realtimeChannel = null;
+  clearTimeout(realtimeRefreshTimer);
+}
+
+function refreshCentralViews() {
+  clearTimeout(realtimeRefreshTimer);
+  realtimeRefreshTimer = window.setTimeout(() => {
+    Promise.allSettled([loadRecentSales(), loadArchive(), loadOpsReport()]);
+    if (currentSaleId) loadSaleOperationHistory(currentSaleId).catch(() => {});
+  }, 350);
+}
+
+function subscribeToCentralUpdates() {
+  if (!supabase || !session?.user) return;
+  unsubscribeFromCentralUpdates();
+  realtimeChannel = supabase
+    .channel(`easycar-central-${session.user.id}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'doc_sales' }, refreshCentralViews)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'doc_sale_operations' }, refreshCentralViews)
+    .subscribe();
 }
 
 function normalizePhoneForSms(value) {
@@ -1599,8 +1628,8 @@ async function sendForSignature() {
     if (!response.ok) throw new Error(result.error || 'No se pudo enviar para firma');
     setCurrentSale(result.saleId || sale?.id, 'sent');
     controls.signatureResult.replaceChildren();
-    const smsText = result.smsTo ? ` SMS solicitado a ${result.smsTo}.` : '';
-    const text = document.createTextNode(`Firma digital enviada al cliente: ${result.sentTo}.${smsText} EasyCar queda como contacto de respuesta. `);
+    const smsText = result.smsTo ? ` DocuSeal acepto el telefono ${result.smsTo} para SMS.` : '';
+    const text = document.createTextNode(`Solicitud de firma creada para ${result.sentTo}.${smsText} Confirma la recepcion con el cliente antes de asumir entrega. `);
     controls.signatureResult.append(text);
     if (result.signingUrl) {
       const link = document.createElement('a');
@@ -1611,7 +1640,7 @@ async function sendForSignature() {
       controls.signatureResult.append(link);
     }
     controls.signatureResult.classList.add('visible');
-    setCloudStatus('La solicitud fue enviada al cliente y el expediente quedo guardado para EasyCar.', 'good');
+    setCloudStatus('Solicitud creada en DocuSeal y expediente guardado. La entrega real por SMS debe confirmarse por evento del proveedor o con el cliente.', 'good');
     if (session?.user) {
       await loadRecentSales();
       await loadArchive();

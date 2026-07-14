@@ -35,7 +35,7 @@ export async function authenticateRequest(req) {
 
 export async function findAuthorizedSale(supabase, profile, saleId) {
   let query = supabase.from('doc_sales').select('*').eq('id', saleId);
-  if (profile.role !== 'admin') query = query.eq('created_by', profile.id);
+  if (!['admin', 'manager'].includes(profile.role)) query = query.eq('created_by', profile.id);
   const { data, error } = await query.single();
   if (error || !data) return { error: 'Sale not found or access denied' };
   return { sale: data };
