@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const app = window.EasyCarApp;
+const DEFAULT_SELLER_EMAIL = 'sales@easycarus.com';
 const config = {
   url: import.meta.env.VITE_SUPABASE_URL || app?.supabaseConfig?.url || '',
   anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || app?.supabaseConfig?.anonKey || ''
@@ -1622,9 +1623,9 @@ async function sendForSignature() {
 }
 
 async function sendLoginLink() {
-  const email = controls.sellerEmail.value.trim();
+  const email = controls.sellerEmail.value.trim() || DEFAULT_SELLER_EMAIL;
   const password = controls.sellerPassword.value;
-  if (!email) return setCloudStatus('Escribe el correo del vendedor para entrar al sistema.', 'error');
+  controls.sellerEmail.value = email;
   if (!password) return setCloudStatus('Escribe la contrasena del vendedor para entrar al sistema.', 'error');
   controls.sendLogin.disabled = true;
   try {
@@ -1707,6 +1708,8 @@ if (!configured) {
   setCloudStatus('Supabase no esta configurado en Vercel. Puedes llenar e imprimir, pero no guardar ni enviar firma digital.');
 } else {
   controls.sendLogin.addEventListener('click', sendLoginLink);
+  controls.sellerEmail.value = controls.sellerEmail.value.trim() || DEFAULT_SELLER_EMAIL;
+  controls.sellerPassword.focus();
   controls.requestPasswordReset.addEventListener('click', requestPasswordReset);
   controls.saveRecoveredPassword.addEventListener('click', () => saveRecoveredPassword());
   controls.sellerPassword.addEventListener('keydown', event => {
