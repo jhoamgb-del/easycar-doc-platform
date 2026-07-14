@@ -2389,7 +2389,11 @@
         Object.entries(formData || {}).forEach(([fieldId, value]) => {
           if ($(fieldId)) $(fieldId).value = value || '';
         });
-        setSaleType(formData?.sale_type);
+        if (formData?.active_module === 'INSURANCE_GPS') {
+          setActiveModule('INSURANCE_GPS');
+        } else {
+          setSaleType(formData?.sale_type);
+        }
         ensureDefaultDates();
         if (!$('insurance_comprehensive').value && $('insurance_collision')?.value) $('insurance_comprehensive').value = $('insurance_collision').value;
         syncInsuranceCoverage();
