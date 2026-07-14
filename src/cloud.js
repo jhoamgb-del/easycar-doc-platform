@@ -731,6 +731,21 @@ async function loadArchive() {
   renderArchiveResults(data || []);
 }
 
+async function checkDuplicateVin(vin) {
+  if (!supabase || !session?.user) return { ready: false, duplicate: false, matches: [] };
+  const clean = cleanVin(vin);
+  if (clean.length !== 17) return { ready: true, duplicate: false, matches: [] };
+  const { data, error } = await supabase
+    .from('doc_sales')
+    .select('id, customer_name, vehicle_description, stock_number, contract_number, transaction_date, status')
+    .eq('vin', clean)
+    .order('created_at', { ascending: false })
+    .limit(6);
+  if (error) throw error;
+  const matches = (data || []).filter(sale => sale.id !== currentSaleId);
+  return { ready: true, duplicate: matches.length > 0, matches };
+}
+
 function csvCell(value) {
   let text = String(value ?? '');
   if (/^[=+\-@]/.test(text)) text = `'${text}`;
@@ -1342,7 +1357,7 @@ function newSale() {
   setCloudStatus('Formulario limpio para una nueva venta. Completa los datos y envia al cliente cuando este listo.', 'good');
 }
 
-window.EasyCarCloud = { saveSale, saveInsuranceGpsReview };
+window.EasyCarCloud = { saveSale, saveInsuranceGpsReview, checkDuplicateVin };
 
 if (!configured) {
   document.body.dataset.auth = 'signed-in';

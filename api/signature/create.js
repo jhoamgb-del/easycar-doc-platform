@@ -183,6 +183,39 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
   const phone = normalizedPhone(form);
   const missing = requiredSignatureErrors(form);
   if (missing.length) throw new Error(`Faltan datos obligatorios antes de enviar: ${missing.join(', ')}`);
+  if (!config.sendSms) throw new Error('La verificacion por SMS esta desactivada en la configuracion');
+
+  const { data: existingRequests, error: existingError } = await supabase
+    .from('doc_signing_requests')
+    .select('id, status, sent_at, signer_email')
+    .eq('sale_id', sale.id)
+    .in('status', ['created', 'sent', 'opened', 'completed'])
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (existingError) throw existingError;
+  const existingRequest = existingRequests?.[0];
+  if (existingRequest) {
+    const label = existingRequest.status === 'completed' ? 'ya fue firmada' : 'ya tiene una solicitud activa';
+    throw new Error(`Esta venta ${label}. No se envio otra solicitud para evitar duplicados. Revisa el expediente central.`);
+  }
+
+  const pendingSubmissionId = `pending-${sale.id}-${Date.now()}`;
+  const { data: requestRecord, error: requestError } = await supabase
+    .from('doc_signing_requests')
+    .insert({
+      sale_id: sale.id,
+      provider_submission_id: pendingSubmissionId,
+      provider_submitter_id: null,
+      signer_email: email,
+      signer_name: name,
+      signing_url: null,
+      status: 'created',
+      sent_by: sentBy
+    })
+    .select('id')
+    .single();
+  if (requestError) throw requestError;
+
   const customerSubmitter = {
     role: config.customerRole,
     email,
@@ -202,94 +235,97 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
       source: 'easycar-doc-platform'
     }
   };
-  if (!config.sendSms) throw new Error('La verificacion por SMS esta desactivada en la configuracion');
-  const response = await fetch(`${config.apiUrl}/submissions/html`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Auth-Token': config.apiKey
-    },
-    body: JSON.stringify({
-      name: `EasyCar ${saleType} Document Package - ${name || sale.id}`,
-      send_email: true,
-      order: 'preserved',
-      merge_documents: true,
-      reply_to: config.replyTo,
-      bcc_completed: config.bccCompleted,
-      completed_redirect_url: config.completedRedirectUrl,
-      expire_at: docusealExpiration(config.expireDays),
-      documents: [{
-        name: `EasyCar ${saleType} Document Package`,
-        html,
-        html_header: renderDocusealHeader(),
-        html_footer: renderDocusealFooter(),
-        size: 'Letter'
-      }],
-      send_sms: true,
-      submitters: [customerSubmitter],
-      message: {
-        subject: `EasyCar - ${saleType} documents ready for secure signature`,
-        body: [
-          'Hello {{submitter.name}},',
-          '',
-          'Your EasyCar documents are ready for secure digital signature.',
-          '',
-          'Please review every page carefully and sign here:',
-          '{{submitter.link}}',
-          '',
-          'For your protection, the signing process requires SMS verification using the phone number provided to EasyCar.',
-          '',
-          'If you have any questions, reply to this email or contact sales@easycarus.com.',
-          '',
-          'Thank you,',
-          'EasyCar LLC'
-        ].join('\n')
-      }
-    })
-  });
+  let submitter = null;
+  let submissionId = '';
+  let submitterId = null;
+  try {
+    const response = await fetch(`${config.apiUrl}/submissions/html`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Auth-Token': config.apiKey
+      },
+      body: JSON.stringify({
+        name: `EasyCar ${saleType} Document Package - ${name || sale.id}`,
+        send_email: true,
+        order: 'preserved',
+        merge_documents: true,
+        reply_to: config.replyTo,
+        bcc_completed: config.bccCompleted,
+        completed_redirect_url: config.completedRedirectUrl,
+        expire_at: docusealExpiration(config.expireDays),
+        documents: [{
+          name: `EasyCar ${saleType} Document Package`,
+          html,
+          html_header: renderDocusealHeader(),
+          html_footer: renderDocusealFooter(),
+          size: 'Letter'
+        }],
+        send_sms: true,
+        submitters: [customerSubmitter],
+        message: {
+          subject: `EasyCar - ${saleType} documents ready for secure signature`,
+          body: [
+            'Hello {{submitter.name}},',
+            '',
+            'Your EasyCar documents are ready for secure digital signature.',
+            '',
+            'Please review every page carefully and sign here:',
+            '{{submitter.link}}',
+            '',
+            'For your protection, the signing process requires SMS verification using the phone number provided to EasyCar.',
+            '',
+            'If you have any questions, reply to this email or contact sales@easycarus.com.',
+            '',
+            'Thank you,',
+            'EasyCar LLC'
+          ].join('\n')
+        }
+      })
+    });
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || payload.message || 'DocuSeal request failed');
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || payload.message || 'DocuSeal request failed');
 
-  const submitter = Array.isArray(payload) ? payload[0] : payload.submitters?.[0] || payload;
-  const submissionId = String(submitter.submission_id || payload.id || '');
-  const submitterId = submitter.id ? String(submitter.id) : null;
-  const signingUrl = submitter.embed_src || submitter.url || (submitter.slug ? `https://docuseal.com/s/${submitter.slug}` : null);
-  if (!submissionId) throw new Error('DocuSeal did not return a submission ID');
-  if (!submitter.phone) {
-    throw new Error(`DocuSeal did not confirm a phone number for SMS. Check that the customer phone is valid: ${phone}`);
+    submitter = Array.isArray(payload) ? payload[0] : payload.submitters?.[0] || payload;
+    submissionId = String(submitter.submission_id || payload.id || '');
+    submitterId = submitter.id ? String(submitter.id) : null;
+    if (!submissionId) throw new Error('DocuSeal did not return a submission ID');
+    if (!submitter.phone) {
+      throw new Error(`DocuSeal did not confirm a phone number for SMS. Check that the customer phone is valid: ${phone}`);
+    }
+    if (submitter.preferences?.send_sms === false) {
+      throw new Error('DocuSeal created the signature request, but SMS was not enabled by DocuSeal. Check that the EasyCar DocuSeal Pro account has SMS invitations enabled.');
+    }
+  } catch (error) {
+    await supabase
+      .from('doc_signing_requests')
+      .update({ status: 'failed' })
+      .eq('id', requestRecord.id);
+    throw error;
   }
-  if (submitter.preferences?.send_sms === false) {
-    throw new Error('DocuSeal created the signature request, but SMS was not enabled by DocuSeal. Check that the EasyCar DocuSeal Pro account has SMS invitations enabled.');
-  }
 
-  const { data: requestRecord, error: requestError } = await supabase
+  const { error: updateRequestError } = await supabase
     .from('doc_signing_requests')
-    .insert({
-      sale_id: sale.id,
+    .update({
       provider_submission_id: submissionId,
       provider_submitter_id: submitterId,
-      signer_email: email,
-      signer_name: name,
-      signing_url: signingUrl,
-      status: 'sent',
-      sent_by: sentBy
+      status: 'sent'
     })
-    .select('id')
-    .single();
-  if (requestError) throw requestError;
+    .eq('id', requestRecord.id);
+  if (updateRequestError) throw updateRequestError;
 
-  await supabase
+  const { error: saleUpdateError } = await supabase
     .from('doc_sales')
     .update({ status: 'sent', signature_method: 'digital' })
     .eq('id', sale.id);
+  if (saleUpdateError) throw saleUpdateError;
 
   return {
     ok: true,
     saleId: sale.id,
     requestId: requestRecord.id,
     submissionId,
-    signingUrl,
     sentTo: email,
     smsTo: submitter.phone || phone,
     smsEnabled: submitter.preferences?.send_sms !== false,

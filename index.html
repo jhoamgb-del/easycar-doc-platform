@@ -150,6 +150,7 @@
     body[data-auth="signed-out"] .private-workspace { display: none !important; }
     .signature-result { grid-column: 1 / -1; display: none; padding: 10px 12px; background: #eaf7ef; border: 1px solid #a9d8bb; border-radius: 5px; font-size: .86rem; }
     .signature-result.visible { display: block; }
+    .status.bad { color: #9d1d28; font-weight: 900; }
     .sales-list { display: grid; gap: 8px; }
     .sale-row { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(110px, .7fr)) auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: .87rem; }
     .sale-row strong { color: var(--dark); }
@@ -483,6 +484,7 @@
         <div class="full">
           <button type="button" class="secondary" id="decodeVin">Buscar ano, marca y modelo por VIN</button>
           <div id="vinStatus" class="status">Al escribir 17 caracteres, el sistema busca ano, marca y modelo automaticamente.</div>
+          <div id="vinDuplicateStatus" class="status"></div>
         </div>
         <label>Ano <input id="vehicle_year"></label>
         <label>Marca <input id="vehicle_make"></label>
@@ -1898,6 +1900,69 @@
     }
     let lastDecodedVin = '';
     let vinDecodeTimer = null;
+    let vinDuplicateTimer = null;
+    let vinDuplicateSeq = 0;
+    function clearVinDuplicateWarning() {
+      const status = $('vinDuplicateStatus');
+      if (status) {
+        status.textContent = '';
+        status.className = 'status';
+      }
+      $('vin')?.classList.remove('field-error');
+    }
+    function formatDuplicateVinMatch(match) {
+      return [
+        match.customer_name || 'Cliente sin nombre',
+        match.vehicle_description || '',
+        match.stock_number ? `Stock ${match.stock_number}` : '',
+        match.contract_number ? `Contrato ${match.contract_number}` : '',
+        match.transaction_date || ''
+      ].filter(Boolean).join(' | ');
+    }
+    async function checkVinDuplicate() {
+      const status = $('vinDuplicateStatus');
+      if (!status) return;
+      const vin = val('vin').toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '').slice(0, 17);
+      if (vin.length !== 17) {
+        clearVinDuplicateWarning();
+        return;
+      }
+      if (!window.EasyCarCloud?.checkDuplicateVin) {
+        status.textContent = 'Entra al sistema para verificar si el VIN ya existe en el expediente central.';
+        status.className = 'status warn';
+        return;
+      }
+      const seq = ++vinDuplicateSeq;
+      status.textContent = 'Verificando si el VIN ya existe...';
+      status.className = 'status';
+      try {
+        const result = await window.EasyCarCloud.checkDuplicateVin(vin);
+        if (seq !== vinDuplicateSeq) return;
+        if (!result.ready) {
+          status.textContent = 'Entra al sistema para verificar duplicados de VIN en el expediente central.';
+          status.className = 'status warn';
+          return;
+        }
+        if (result.duplicate) {
+          const detail = result.matches.slice(0, 2).map(formatDuplicateVinMatch).join(' / ');
+          status.textContent = `BANDERA ROJA: este VIN ya existe en el sistema. ${detail}`;
+          status.className = 'status bad';
+          $('vin')?.classList.add('field-error');
+          return;
+        }
+        status.textContent = 'VIN sin duplicado visible en el expediente central.';
+        status.className = 'status good';
+        $('vin')?.classList.remove('field-error');
+      } catch (error) {
+        if (seq !== vinDuplicateSeq) return;
+        status.textContent = 'No se pudo verificar duplicados de VIN. Guarda con cuidado y revisa el archivo central.';
+        status.className = 'status warn';
+      }
+    }
+    function scheduleVinDuplicateCheck() {
+      clearTimeout(vinDuplicateTimer);
+      vinDuplicateTimer = setTimeout(checkVinDuplicate, 500);
+    }
     async function decodeVin() {
       const vin = val('vin').toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '').slice(0, 17);
       $('vin').value = vin;
@@ -1929,12 +1994,14 @@
       const vin = val('vin').toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '').slice(0, 17);
       $('vin').value = vin;
       clearTimeout(vinDecodeTimer);
+      scheduleVinDuplicateCheck();
       if (vin.length === 17) {
         $('vinStatus').textContent = 'VIN completo. Buscando datos del carro...';
         $('vinStatus').className = 'status';
         vinDecodeTimer = setTimeout(decodeVin, 450);
       } else {
         lastDecodedVin = '';
+        clearVinDuplicateWarning();
         $('vinStatus').textContent = 'Al escribir 17 caracteres, el sistema busca ano, marca y modelo automaticamente.';
         $('vinStatus').className = 'status';
       }
@@ -2111,6 +2178,7 @@
       });
       renderDocs();
       setSaveStatus(sale.cloud_only ? `Resumen ${id.slice(0, 8)} abierto. Para datos completos usa Abrir desde ventas centrales.` : `Venta ${id.slice(0, 8)} abierta desde este navegador.`, sale.cloud_only ? 'warn' : 'good');
+      scheduleVinDuplicateCheck();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     function setSaveStatus(message, className = '') {

@@ -69,6 +69,9 @@ create table if not exists public.doc_sale_documents (
   created_at timestamptz not null default now()
 );
 
+create unique index if not exists idx_doc_sale_documents_storage_path
+on public.doc_sale_documents(storage_path);
+
 create table if not exists public.doc_signing_requests (
   id uuid primary key default gen_random_uuid(),
   sale_id uuid not null references public.doc_sales(id) on delete cascade,
@@ -358,7 +361,11 @@ using (public.doc_can_access_sale(sale_id));
 
 drop policy if exists "documents_insert" on public.doc_sale_documents;
 create policy "documents_insert" on public.doc_sale_documents for insert to authenticated
-with check (public.doc_can_access_sale(sale_id) and uploaded_by = auth.uid());
+with check (
+  public.doc_can_access_sale(sale_id)
+  and uploaded_by = auth.uid()
+  and document_type <> 'signed_digital'
+);
 
 drop policy if exists "signing_requests_read" on public.doc_signing_requests;
 create policy "signing_requests_read" on public.doc_signing_requests for select to authenticated
@@ -395,18 +402,10 @@ create policy "doc_sale_files_insert" on storage.objects for insert to authentic
 with check (
   bucket_id = 'easycar-documents'
   and public.doc_can_access_sale(((storage.foldername(name))[1])::uuid)
+  and coalesce((storage.foldername(name))[2], '') <> 'digital'
 );
 
 drop policy if exists "doc_sale_files_update" on storage.objects;
-create policy "doc_sale_files_update" on storage.objects for update to authenticated
-using (
-  bucket_id = 'easycar-documents'
-  and public.doc_can_access_sale(((storage.foldername(name))[1])::uuid)
-)
-with check (
-  bucket_id = 'easycar-documents'
-  and public.doc_can_access_sale(((storage.foldername(name))[1])::uuid)
-);
 
 -- After creating the first user in Supabase Auth, promote the owner manually:
 -- update public.doc_user_profiles set role = 'admin' where id = 'USER_UUID';
