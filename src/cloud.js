@@ -824,25 +824,29 @@ function renderArchiveResults(sales) {
 async function loadArchive() {
   if (!supabase || !session?.user) return;
   const term = controls.archiveSearch.value.trim();
-  let query = supabase
-    .from('doc_sales')
-    .select('id, customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at, doc_sale_documents(id, document_type, storage_path, original_name, created_at)')
-    .order('created_at', { ascending: false })
-    .limit(200);
-
-  if (term) {
-    const safeTerm = term.replace(/[%_,]/g, ' ');
-    const pattern = `%${safeTerm}%`;
-    query = query.or(`customer_name.ilike.${pattern},customer_email.ilike.${pattern},customer_phone.ilike.${pattern},vin.ilike.${pattern},stock_number.ilike.${pattern},contract_number.ilike.${pattern}`);
+  const pageSize = 500;
+  const sales = [];
+  for (let offset = 0; ; offset += pageSize) {
+    let query = supabase
+      .from('doc_sales')
+      .select('id, customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at, doc_sale_documents(id, document_type, storage_path, original_name, created_at)')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (term) {
+      const safeTerm = term.replace(/[%_,]/g, ' ');
+      const pattern = `%${safeTerm}%`;
+      query = query.or(`customer_name.ilike.${pattern},customer_email.ilike.${pattern},customer_phone.ilike.${pattern},vin.ilike.${pattern},stock_number.ilike.${pattern},contract_number.ilike.${pattern}`);
+    }
+    const { data, error } = await query;
+    if (error) {
+      setCloudStatus(`No se pudo buscar en el archivo central: ${error.message}`, 'error');
+      return;
+    }
+    sales.push(...(data || []));
+    if ((data || []).length < pageSize) break;
   }
-
-  const { data, error } = await query;
-  if (error) {
-    setCloudStatus(`No se pudo buscar en el archivo central: ${error.message}`, 'error');
-    return;
-  }
-  renderArchiveResults(data || []);
-  setCloudStatus(`${(data || []).length} expediente(s) visibles en el archivo central.`, 'good');
+  renderArchiveResults(sales);
+  setCloudStatus(`${sales.length} expediente(s) visibles en el archivo central.`, 'good');
 }
 
 async function checkDuplicateVin(vin) {
