@@ -53,6 +53,11 @@ export default async function handler(req, res) {
 
     return json(res, 200, { ok: true, action, email, role: 'seller' });
   } catch (error) {
-    return json(res, 500, { error: error.message || 'Unable to configure account' });
+    console.error('Temporary sales setup failed', error);
+    return json(res, 500, {
+      error: error?.message || error?.error_description || 'Unable to configure account',
+      error_type: error?.name || typeof error,
+      error_code: error?.code || null
+    });
   }
 }
