@@ -63,6 +63,7 @@ let opsFilter = 'all';
 let autosaveTimer = null;
 let realtimeChannel = null;
 let realtimeRefreshTimer = null;
+let currentProfileRole = '';
 
 function setCloudStatus(message, tone = '') {
   controls.status.textContent = message;
@@ -91,6 +92,7 @@ function setSessionUi(nextSession) {
   controls.importPanel.hidden = !loggedIn;
   controls.opsReport.hidden = !loggedIn;
   controls.adminPanel.hidden = true;
+  currentProfileRole = '';
   setCloudStatus(
     loggedIn
       ? 'Conectado a Supabase. Completa el email del cliente y usa Enviar firma digital al cliente.'
@@ -101,7 +103,13 @@ function setSessionUi(nextSession) {
     loadRecentSales();
     loadArchive();
     loadOpsReport();
-    loadAdminUsers();
+    loadCurrentProfileRole()
+      .then(role => {
+        if (role !== 'admin') return null;
+        controls.adminPanel.hidden = false;
+        return loadAdminUsers();
+      })
+      .catch(error => setCloudStatus(`No se pudo confirmar el rol de acceso: ${error.message}`, 'error'));
     subscribeToCentralUpdates();
   } else {
     unsubscribeFromCentralUpdates();
@@ -1519,15 +1527,46 @@ function renderAdminUsers(users) {
   });
 }
 
+function renderAdminUnavailable(message) {
+  controls.adminUsers.replaceChildren();
+  const note = document.createElement('p');
+  note.className = 'status error';
+  note.textContent = message;
+  controls.adminUsers.append(note);
+}
+
+async function loadCurrentProfileRole() {
+  if (!supabase || !session?.user) return '';
+  const { data, error } = await supabase
+    .from('doc_user_profiles')
+    .select('role, active')
+    .eq('id', session.user.id)
+    .maybeSingle();
+  if (error) throw error;
+  currentProfileRole = data?.active ? data.role || '' : '';
+  return currentProfileRole;
+}
+
 async function loadAdminUsers() {
   if (!session?.access_token) return;
   const response = await fetch('/api/admin/users', { headers: authHeaders() });
   if (response.status === 403) {
-    controls.adminPanel.hidden = true;
+    if (currentProfileRole !== 'admin') controls.adminPanel.hidden = true;
+    else {
+      controls.adminPanel.hidden = false;
+      renderAdminUnavailable('Tu acceso maestro esta activo. Falta completar la configuracion privada del servidor para administrar usuarios desde esta pantalla.');
+    }
     return;
   }
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'No se pudo cargar usuarios');
+  if (!response.ok) {
+    if (currentProfileRole === 'admin') {
+      controls.adminPanel.hidden = false;
+      renderAdminUnavailable('Tu acceso maestro esta activo. La administracion de usuarios requiere una configuracion privada del servidor pendiente.');
+      return;
+    }
+    throw new Error(result.error || 'No se pudo cargar usuarios');
+  }
   controls.adminPanel.hidden = false;
   renderAdminUsers(result.users || []);
 }
