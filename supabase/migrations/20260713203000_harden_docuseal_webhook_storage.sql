@@ -1,6 +1,3 @@
-create unique index if not exists idx_doc_sale_documents_storage_path
-on public.doc_sale_documents(storage_path);
-
 drop policy if exists "documents_insert" on public.doc_sale_documents;
 create policy "documents_insert" on public.doc_sale_documents for insert to authenticated
 with check (

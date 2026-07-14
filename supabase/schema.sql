@@ -69,9 +69,6 @@ create table if not exists public.doc_sale_documents (
   created_at timestamptz not null default now()
 );
 
-create unique index if not exists idx_doc_sale_documents_storage_path
-on public.doc_sale_documents(storage_path);
-
 create table if not exists public.doc_signing_requests (
   id uuid primary key default gen_random_uuid(),
   sale_id uuid not null references public.doc_sales(id) on delete cascade,
