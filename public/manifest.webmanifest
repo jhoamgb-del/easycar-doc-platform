@@ -1,0 +1,19 @@
+{
+  "name": "DOC EASYCAR",
+  "short_name": "DOC EASYCAR",
+  "description": "Documentos, expediente central y control operativo de EasyCar.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#edf2f8",
+  "theme_color": "#1555a6",
+  "icons": [
+    {
+      "src": "/easycar-docuseal-logo-400.png",
+      "sizes": "400x400",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
