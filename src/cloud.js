@@ -627,19 +627,8 @@ async function saveInsuranceGpsReview(formData) {
     payload,
     created_by: session.user.id
   }];
-  const scheduledTypes = [];
-  if (formData.insurance_next_review_date) scheduledTypes.push('proxima_revision_seguro');
-  if (formData.gps_next_review_date) scheduledTypes.push('proxima_revision_gps');
-  if (scheduledTypes.length) {
-    const { error: clearScheduleError } = await supabase
-      .from('doc_sale_operations')
-      .delete()
-      .eq('sale_id', sale.id)
-      .eq('module', 'insurance_gps')
-      .in('event_type', scheduledTypes)
-      .eq('status', 'Pendiente');
-    if (clearScheduleError) throw clearScheduleError;
-  }
+  // Each scheduled review is retained as an audit entry. The current due date
+  // is read from the sale record, so replacing it never requires deleting history.
   if (formData.insurance_next_review_date) {
     rows.push({
       sale_id: sale.id,
