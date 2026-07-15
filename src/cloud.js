@@ -805,8 +805,11 @@ function renderArchiveResults(sales) {
   }
 
   sales.forEach(sale => {
-    const row = document.createElement('div');
+    const row = document.createElement('details');
     row.className = 'archive-row';
+
+    const summary = document.createElement('summary');
+    summary.className = 'archive-summary';
 
     const customer = document.createElement('div');
     const name = document.createElement('strong');
@@ -835,6 +838,8 @@ function renderArchiveResults(sales) {
     status.className = 'archive-meta';
     status.textContent = `${saleTypeLabel(sale.form_data)} | ${statusLabel(sale.status)}${sale.transaction_date ? ` | ${formatDateDisplay(sale.transaction_date)}` : ''}`;
 
+    const expanded = document.createElement('div');
+    expanded.className = 'archive-expanded';
     const docs = document.createElement('div');
     docs.className = 'archive-docs';
     const documents = sale.doc_sale_documents || [];
@@ -862,7 +867,9 @@ function renderArchiveResults(sales) {
     open.textContent = 'Abrir expediente';
     open.addEventListener('click', () => loadSale(sale.id).catch(error => setCloudStatus(error.message, 'error')));
     docs.prepend(open);
-    row.append(customer, vehicle, status, docs);
+    summary.append(customer, vehicle, status);
+    expanded.append(docs);
+    row.append(summary, expanded);
     controls.archiveResults.append(row);
   });
 }

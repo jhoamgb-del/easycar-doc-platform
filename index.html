@@ -116,10 +116,14 @@
     .archive-panel h3 { margin: 0; font-size: .9rem; color: var(--dark); }
     .archive-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
     .archive-results { display: grid; gap: 8px; }
-    .archive-row { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) 120px; gap: 10px; padding: 10px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; font-size: .83rem; }
+    .archive-row { border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; font-size: .83rem; overflow: hidden; }
+    .archive-row[open] { border-color: #9db8db; box-shadow: inset 4px 0 0 var(--blue); }
+    .archive-summary { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) 120px; gap: 10px; align-items: center; padding: 10px; cursor: pointer; }
+    .archive-summary:hover { background: #f5f9ff; }
+    .archive-expanded { border-top: 1px solid #d5e1f1; padding: 10px; background: #fbfdff; }
     .archive-row strong { color: var(--dark); }
     .archive-meta { color: var(--muted); line-height: 1.35; }
-    .archive-docs { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 7px; }
+    .archive-docs { display: flex; flex-wrap: wrap; gap: 7px; }
     .archive-docs button { min-height: 32px; padding: 0 10px; }
     .import-panel { grid-column: 1 / -1; border-top: 1px solid #d5e1f1; padding-top: 12px; display: grid; gap: 10px; }
     .import-panel h3 { margin: 0; font-size: .9rem; color: var(--dark); }
@@ -234,6 +238,7 @@
       .cloud-auth label { min-width: 0; max-width: none; width: 100%; }
       .password-recovery { grid-template-columns: 1fr; }
       .cloud-sale-row { grid-template-columns: 1fr; }
+      .archive-summary { grid-template-columns: 1fr; }
       .ops-summary { grid-template-columns: 1fr 1fr; }
       .ops-row { grid-template-columns: 1fr; }
       .ops-operator-row { grid-template-columns: 1fr 1fr; }
