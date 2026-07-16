@@ -61,6 +61,7 @@ let session = null;
 let currentSaleId = null;
 let opsFilter = 'all';
 let autosaveTimer = null;
+let saleInsertPromise = null;
 let realtimeChannel = null;
 let realtimeRefreshTimer = null;
 let currentProfileRole = '';
@@ -289,14 +290,34 @@ async function saveSale(formData, { quiet = false } = {}) {
   if (!supabase || !session?.user) return null;
   formData = withNormalizedPhones(formData);
   const record = saleRecord(formData);
-  let query;
+  let result;
   if (currentSaleId) {
     const { created_by, status, ...updateRecord } = record;
-    query = supabase.from('doc_sales').update(updateRecord).eq('id', currentSaleId);
+    result = await supabase
+      .from('doc_sales')
+      .update(updateRecord)
+      .eq('id', currentSaleId)
+      .select('id, status')
+      .single();
   } else {
-    query = supabase.from('doc_sales').insert(record);
+    // A second autosave can fire while the first insert is still in flight.
+    // Wait for that insert, then update the same sale instead of creating a duplicate.
+    if (saleInsertPromise) {
+      await saleInsertPromise;
+      return saveSale(formData, { quiet });
+    }
+    saleInsertPromise = supabase
+      .from('doc_sales')
+      .insert(record)
+      .select('id, status')
+      .single();
+    try {
+      result = await saleInsertPromise;
+    } finally {
+      saleInsertPromise = null;
+    }
   }
-  const { data, error } = await query.select('id, status').single();
+  const { data, error } = result;
   if (error) throw error;
   setCurrentSale(data.id, data.status);
   if (!quiet) {
