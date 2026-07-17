@@ -476,7 +476,8 @@
         <p class="mode-summary" id="modeSummary">BHPH: se generan todos los documentos del paquete.</p>
       </div>
       <section class="ops-report-panel private-workspace" id="opsReportPanel" hidden>
-        <h3>Control GPS / Seguro</h3>
+        <h3>Reportes y agenda: GPS / Seguro</h3>
+        <p class="storage-note">Los cuadros son filtros: al seleccionarlos ves solamente esos casos. Cada registro muestra la última acción, el operador, fecha y hora.</p>
         <div class="ops-summary" id="opsSummary"></div>
         <div class="process-panel" id="opsOperatorPanel">
           <h4>Actividad del operador</h4>
@@ -554,13 +555,9 @@
         <label class="insurance-only">Estatus poliza
           <select id="insurance_status">
             <option value=""></option>
-            <option value="Activa">Activa</option>
-            <option value="Pendiente">Pendiente</option>
-            <option value="Cancelada">Cancelada</option>
-            <option value="Anulada">Anulada</option>
-            <option value="Vencida">Vencida</option>
-            <option value="Reposicion">Reposicion</option>
-            <option value="No verificable">No verificable</option>
+            <option value="Activo">Activo</option>
+            <option value="Cancelado">Cancelado</option>
+            <option value="Vencido">Vencido</option>
           </select>
         </label>
         <label class="insurance-only">Proxima revision poliza <input id="insurance_next_review_date" type="date" readonly></label>
@@ -618,14 +615,9 @@
         <label class="insurance-only">Estatus GPS
           <select id="gps_device_status">
             <option value=""></option>
-            <option value="No instalado">No instalado / sin GPS</option>
-            <option value="No verificado">No verificado</option>
             <option value="Activo">Activo</option>
-            <option value="Expirado">Expirado</option>
+            <option value="Inactivo">Inactivo</option>
             <option value="Desconectado">Desconectado</option>
-            <option value="Sin senal">Sin senal</option>
-            <option value="Removido / alterado">Removido / alterado</option>
-            <option value="No localizado">No localizado</option>
           </select>
         </label>
         <label class="insurance-only">Millas al revisar <input id="gps_last_mileage"></label>
@@ -675,6 +667,11 @@
             <option value="Si">Si</option>
             <option value="No">No</option>
             <option value="No confirmado">No confirmado</option>
+          </select>
+        </label>
+        <label class="insurance-only">Repo confirmado / carro en dealer
+          <select id="recovery_repo_confirmed">
+            <option value=""></option><option value="Si">Si</option><option value="No">No</option>
           </select>
         </label>
         <label class="full insurance-only">Notas de danos / condicion al recuperar <textarea id="recovery_damage_notes" placeholder="Indica si llego con danos, fotos pendientes, posible reclamo al seguro"></textarea></label>
@@ -770,6 +767,7 @@
         <div class="ops-action insurance-only">
           <button type="button" class="secondary" id="saveInsuranceGpsData">Guardar datos de Seguro y GPS</button>
           <button type="button" id="saveInsuranceGpsReview">Registrar verificacion / seguimiento</button>
+          <button type="button" class="secondary" id="sendInsuranceSms">Preparar / enviar SMS de seguro</button>
           <div id="insuranceGpsStatus" class="status">Guarda primero los datos del expediente. Cada verificacion requiere accion, resultado y nota para dejar evidencia con usuario, dia y hora.</div>
         </div>
         <div class="process-panel insurance-only" id="operationHistoryPanel">
@@ -1216,9 +1214,11 @@
       INSURANCE_GPS: 'GPS Y SEGURO: usa el mismo cliente, VIN y vehiculo del expediente para controlar poliza, GPS, GAP y siniestros.'
     };
     const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO';
+    const buildSupabaseUrl = '%VITE_SUPABASE_URL%';
+    const buildSupabaseAnonKey = '%VITE_SUPABASE_ANON_KEY%';
     const SUPABASE_CONFIG = {
-      url: window.EASYCAR_SUPABASE_URL || '%VITE_SUPABASE_URL%' || 'https://hqjsdcrtkxujljobcycm.supabase.co',
-      anonKey: window.EASYCAR_SUPABASE_ANON_KEY || '%VITE_SUPABASE_ANON_KEY%' || 'sb_publishable_8IFGsxcRIr2-QqLS8C2XPQ_aRofyk2I'
+      url: window.EASYCAR_SUPABASE_URL || (buildSupabaseUrl.startsWith('%') ? 'https://hqjsdcrtkxujljobcycm.supabase.co' : buildSupabaseUrl),
+      anonKey: window.EASYCAR_SUPABASE_ANON_KEY || (buildSupabaseAnonKey.startsWith('%') ? 'sb_publishable_8IFGsxcRIr2-QqLS8C2XPQ_aRofyk2I' : buildSupabaseAnonKey)
     };
     const pickupIds = Array.from({ length: 14 }, (_, i) => i + 1).flatMap(i => [`pickup_date_${i}`, `pickup_amount_${i}`, `pickup_interest_${i}`, `pickup_principal_${i}`, `pickup_balance_${i}`]);
     const ids = [
@@ -1228,7 +1228,7 @@
       'record_loaded_date','vehicle_loaded_date','insurance_first_review_date','gps_first_review_date',
       'insurance_provider','insurance_policy_number','insurance_agency_phone','insurance_issue_date','insurance_expiration_date','insurance_address_matches','insurance_policy_address','insurance_cancelled_since','insurance_status','insurance_verified_date','insurance_next_review_date','insurance_payments_current','insurance_comprehensive','insurance_collision','insurance_lienholder','insurance_status_reason',
       'gps_imei','gps_provider','gps_device_status','gps_battery_connected','gps_last_mileage','gps_last_location','gps_location_jurisdiction','gps_last_seen_at','gps_overnight_location','gps_status_reason','gps_service_expiration_date','gps_next_review_date','gps_monthly_miles','gps_monthly_miles_status',
-      'recovery_event_type','recovery_event_date','recovery_last_location','recovery_policy_active_on_event','recovery_damage_notes','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_claim_number','gap_opened_date','insurance_claim_last_call_date','gap_last_call_date','claim_pending_action','gap_missing_documents','ops_action_type','ops_contact_result','ops_next_action','insurance_gps_notes',
+      'recovery_event_type','recovery_event_date','recovery_last_location','recovery_policy_active_on_event','recovery_repo_confirmed','recovery_damage_notes','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_claim_number','gap_opened_date','insurance_claim_last_call_date','gap_last_call_date','claim_pending_action','gap_missing_documents','ops_action_type','ops_contact_result','ops_next_action','insurance_gps_notes',
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
       'conditional_delivery_date','conditional_deadline',
       'surrender_date','surrender_time','surrender_location','account_number','surrender_monthly_payment','surrender_paid_installments','surrender_owed_installments','surrender_amount_owed','surrender_payoff','surrender_days_sold','surrender_keys','surrender_title','surrender_registration','surrender_exterior','surrender_mechanical','surrender_personal_property','surrender_photo_notes',
@@ -1374,7 +1374,7 @@
     }
     function isInsuranceProblem() {
       return !val('insurance_policy_number')
-        || ['Pendiente', 'Cancelada', 'Anulada', 'Vencida', 'Reposicion', 'No verificable'].includes(val('insurance_status'))
+        || ['Cancelado', 'Vencido'].includes(val('insurance_status'))
         || ['No', 'No confirmado'].includes(val('insurance_payments_current'))
         || ['No', 'No confirmado'].includes(val('insurance_comprehensive'))
         || ['No', 'No confirmado'].includes(val('insurance_collision'))
@@ -1394,7 +1394,7 @@
     }
     function isGpsProblem() {
       return !val('gps_imei')
-        || ['No instalado', 'No verificado', 'Expirado', 'Desconectado', 'Sin senal', 'Removido / alterado', 'No localizado'].includes(val('gps_device_status'))
+        || ['Inactivo', 'Desconectado'].includes(val('gps_device_status'))
         || ['No', 'No confirmado'].includes(val('gps_battery_connected'))
         || val('gps_monthly_miles_status') === 'Sobre 1500 millas'
         || val('gps_location_jurisdiction') === 'Fuera de Florida'
@@ -1448,7 +1448,7 @@
       updatePanel(
         'insuranceActionPanel',
         insuranceProblem,
-        insuranceProblem && ['Cancelada', 'Anulada', 'Vencida', 'Reposicion', 'No verificable'].includes(val('insurance_status')) ? 'critical' : 'warn',
+        insuranceProblem && ['Cancelado', 'Vencido'].includes(val('insurance_status')) ? 'critical' : 'warn',
         'insuranceActionText',
         insuranceProblem
           ? `Seguro requiere accion: estatus ${val('insurance_status') || 'sin estatus'}, poliza ${val('insurance_policy_number') || 'sin numero'}, vence ${val('insurance_expiration_date') || 'sin fecha'}. Notifica al cliente y registra a quien llamaste, fecha, resultado y proxima accion.`
@@ -1469,7 +1469,7 @@
         'critical',
         'recoveryActionText',
         recoveryOpen
-          ? `${eventType || 'Reposicion'}: confirma fecha, ultima ubicacion del carro, si la poliza estaba activa el dia del repo y desde cuando estaba cancelada/anulada. Si llego con danos y la poliza estaba vigente, deja nota para posible reclamo al seguro.`
+          ? `${eventType || 'Reposicion'}: confirma fecha, ultima ubicacion del carro, si la poliza estaba activa el dia del evento y si el carro ya esta confirmado en el dealer. Al confirmar el repo, se cierra la revision rutinaria de GPS/seguro y se conserva el historial.`
           : ''
       );
       updatePanel(
