@@ -42,6 +42,11 @@ const controls = {
   importStatus: byId('bulkImportStatus'),
   opsReport: byId('opsReportPanel'),
   opsSummary: byId('opsSummary'),
+  opsCalendarTitle: byId('opsCalendarTitle'),
+  opsCalendarGrid: byId('opsCalendarGrid'),
+  opsCalendarAgenda: byId('opsCalendarAgenda'),
+  opsCalendarPrevious: byId('opsCalendarPrevious'),
+  opsCalendarNext: byId('opsCalendarNext'),
   opsOperatorSummary: byId('opsOperatorSummary'),
   opsSearch: byId('opsSearch'),
   clearOpsSearch: byId('clearOpsSearch'),
@@ -66,6 +71,7 @@ let saleInsertPromise = null;
 let realtimeChannel = null;
 let realtimeRefreshTimer = null;
 let currentProfileRole = '';
+let opsCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
 function setCloudStatus(message, tone = '') {
   controls.status.textContent = message;
@@ -686,6 +692,31 @@ async function saveInsuranceGpsReview(formData) {
   await loadArchive();
   await loadOpsReport();
   return data?.[0] || null;
+}
+
+async function saveInsuranceGpsIdentification(formData) {
+  if (!supabase || !session?.user) return null;
+  const sale = await saveSale(formData);
+  const payload = insuranceGpsPayload(formData);
+  const status = [formData.insurance_status, formData.gps_device_status].filter(Boolean).join(' / ') || 'Pendiente de verificacion';
+  const note = 'Identificacion o actualizacion inicial de seguro/GPS guardada en el expediente.';
+  const { error } = await supabase
+    .from('doc_sale_operations')
+    .insert({
+      sale_id: sale.id,
+      module: 'insurance_gps',
+      event_type: 'Identificacion / actualizacion GPS y seguro',
+      status,
+      follow_up_at: formData.insurance_next_review_date || formData.gps_next_review_date || null,
+      note,
+      payload,
+      created_by: session.user.id
+    });
+  if (error) throw error;
+  await loadSaleOperationHistory(sale.id);
+  await loadArchive();
+  await loadOpsReport();
+  return sale;
 }
 
 async function loadSale(id) {
@@ -1345,6 +1376,84 @@ function showOpsHistory(profile) {
   window.alert(`${header}\n\nESTADO ACTUAL\n${current}\n\nHISTORIAL DEL OPERADOR\n${history}`);
 }
 
+function localDateKey(value) {
+  if (!value) return '';
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function calendarTasksForProfiles(profiles) {
+  const tasks = [];
+  profiles.forEach(profile => {
+    if (profile.repoConfirmed) return;
+    const add = (date, label, priority = '') => {
+      const key = localDateKey(date);
+      if (key) tasks.push({ key, label, priority, profile });
+    };
+    add(profile.form.insurance_next_review_date, 'Verificar poliza', profile.policyProblem ? 'alert' : '');
+    add(profile.form.gps_next_review_date, 'Verificar GPS', profile.gpsProblem ? 'alert' : '');
+    profile.operations
+      .filter(operation => operation.follow_up_at && !String(operation.event_type || '').startsWith('proxima_revision_'))
+      .forEach(operation => add(operation.follow_up_at, operation.event_type || 'Seguimiento', operation.status === 'Irregularidad' ? 'alert' : ''));
+  });
+  return tasks.sort((a, b) => a.key.localeCompare(b.key) || a.label.localeCompare(b.label));
+}
+
+function renderOpsCalendar(profiles) {
+  if (!controls.opsCalendarGrid || !controls.opsCalendarAgenda || !controls.opsCalendarTitle) return;
+  const tasks = calendarTasksForProfiles(profiles);
+  const year = opsCalendarMonth.getFullYear();
+  const month = opsCalendarMonth.getMonth();
+  controls.opsCalendarTitle.textContent = `Agenda del operador - ${opsCalendarMonth.toLocaleString('es-US', { month: 'long', year: 'numeric' })}`;
+  controls.opsCalendarGrid.replaceChildren();
+  const first = new Date(year, month, 1);
+  const start = new Date(year, month, 1 - first.getDay());
+  const todayKey = localDateKey(new Date());
+  for (let offset = 0; offset < 42; offset += 1) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + offset);
+    const key = localDateKey(date);
+    const dayTasks = tasks.filter(task => task.key === key);
+    const cell = document.createElement('div');
+    cell.className = `ops-calendar-day${date.getMonth() !== month ? ' muted' : ''}${key === todayKey ? ' today' : ''}${dayTasks.some(task => task.priority === 'alert') ? ' alert' : ''}`;
+    const day = document.createElement('strong');
+    day.textContent = String(date.getDate());
+    cell.append(day);
+    if (dayTasks.length) {
+      const taskText = document.createElement('small');
+      taskText.textContent = `${dayTasks.length} tarea${dayTasks.length === 1 ? '' : 's'}`;
+      cell.append(taskText);
+    }
+    controls.opsCalendarGrid.append(cell);
+  }
+  controls.opsCalendarAgenda.replaceChildren();
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const visible = tasks.filter(task => task.key.startsWith(monthPrefix)).slice(0, 25);
+  if (!visible.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-history';
+    empty.textContent = 'No hay tareas programadas para este mes.';
+    controls.opsCalendarAgenda.append(empty);
+    return;
+  }
+  visible.forEach(task => {
+    const row = document.createElement('div');
+    row.className = 'ops-calendar-task';
+    const date = document.createElement('strong');
+    date.textContent = formatDateDisplay(task.key);
+    const detail = document.createElement('span');
+    detail.textContent = `${task.label}: ${task.profile.sale.customer_name || 'Cliente'}${task.profile.sale.vin ? ` | ${task.profile.sale.vin}` : ''}`;
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'secondary';
+    open.textContent = 'Abrir';
+    open.addEventListener('click', () => openOpsSale(task.profile));
+    row.append(date, detail, open);
+    controls.opsCalendarAgenda.append(row);
+  });
+}
+
 function renderOpsReport(profiles) {
   const operations = profiles.flatMap(profile => profile.operations || []);
   const operatorActions = operations.filter(isOperatorAction);
@@ -1368,6 +1477,7 @@ function renderOpsReport(profiles) {
     renderOpsMetric('Operadores activos', new Set(operatorActions.map(operation => operation.created_by).filter(Boolean)).size)
   );
   renderOperatorSummary(operations);
+  renderOpsCalendar(profiles);
 
   controls.opsResults.replaceChildren();
   const visibleProfiles = profiles.filter(opsVisible).sort((a, b) => {
@@ -1816,7 +1926,7 @@ function newSale() {
   setCloudStatus('Formulario limpio para una nueva venta. Completa los datos y envia al cliente cuando este listo.', 'good');
 }
 
-window.EasyCarCloud = { saveSale, saveInsuranceGpsReview, checkDuplicateVin, scheduleAutoSave };
+window.EasyCarCloud = { saveSale, saveInsuranceGpsIdentification, saveInsuranceGpsReview, checkDuplicateVin, scheduleAutoSave };
 
 if (!configured) {
   document.body.dataset.auth = 'signed-in';
@@ -1861,6 +1971,14 @@ if (!configured) {
     loadOpsReport().catch(error => setCloudStatus(error.message, 'error'));
   };
   controls.opsSummary.addEventListener('click', setOpsFilterFromEvent);
+  controls.opsCalendarPrevious?.addEventListener('click', () => {
+    opsCalendarMonth = new Date(opsCalendarMonth.getFullYear(), opsCalendarMonth.getMonth() - 1, 1);
+    loadOpsReport().catch(error => setCloudStatus(error.message, 'error'));
+  });
+  controls.opsCalendarNext?.addEventListener('click', () => {
+    opsCalendarMonth = new Date(opsCalendarMonth.getFullYear(), opsCalendarMonth.getMonth() + 1, 1);
+    loadOpsReport().catch(error => setCloudStatus(error.message, 'error'));
+  });
   controls.opsSearch.addEventListener('input', () => loadOpsReport().catch(error => setCloudStatus(error.message, 'error')));
   controls.clearOpsSearch.addEventListener('click', () => {
     controls.opsSearch.value = '';
