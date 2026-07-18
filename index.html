@@ -133,8 +133,8 @@
     .import-actions button { min-height: 42px; }
     .ops-report-panel { grid-column: 1 / -1; border-top: 1px solid #d5e1f1; padding-top: 12px; display: grid; gap: 10px; }
     .ops-report-panel h3 { margin: 0; font-size: .9rem; color: var(--dark); }
-    .ops-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
-    .ops-metric { min-height: 64px; padding: 10px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; text-align: left; cursor: pointer; }
+    .ops-summary { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+    .ops-metric { min-height: 84px; padding: 11px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; text-align: left; cursor: pointer; }
     .ops-metric.active { border-color: var(--blue); background: #eaf2ff; box-shadow: inset 4px 0 0 var(--blue); }
     .ops-metric strong { display: block; color: var(--dark); font-size: 1.25rem; }
     .ops-metric span { display: block; color: var(--muted); font-size: .74rem; font-weight: 800; text-transform: uppercase; }
@@ -142,6 +142,9 @@
     .ops-filters { display: flex; gap: 8px; flex-wrap: wrap; }
     .ops-filters button { min-height: 34px; padding: 0 10px; }
     .ops-filters button.active { background: var(--blue); color: #fff; }
+    .ops-view-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .ops-view-heading h4 { margin: 0; color: var(--dark); font-size: .92rem; }
+    .ops-view-heading span { color: var(--muted); font-size: .78rem; }
     .ops-results { display: grid; gap: 8px; }
     .ops-operator-summary { display: grid; gap: 7px; }
     .ops-operator-row { display: grid; grid-template-columns: minmax(150px, 1fr) repeat(4, auto); gap: 10px; align-items: center; padding: 9px 10px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; color: var(--muted); font-size: .82rem; }
@@ -163,8 +166,14 @@
     .ops-calendar-task { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 9px; border: 1px solid #d5e1f1; border-radius: 5px; background: #fff; font-size: .8rem; }
     .ops-calendar-task strong { color: var(--dark); }
     .ops-calendar-task button { min-height: 30px; padding: 0 10px; }
-    .ops-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .95fr) minmax(0, 1.1fr) auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; font-size: .82rem; }
+    .ops-row { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .9fr) minmax(220px, 1fr) auto; gap: 12px; align-items: center; padding: 11px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; font-size: .82rem; }
     .ops-row strong { color: var(--dark); }
+    .ops-status-line { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+    .ops-chip { display: inline-flex; align-items: center; min-height: 24px; padding: 0 7px; border: 1px solid #bfd0e6; border-radius: 4px; background: #edf4fd; color: #173b6b; font-size: .69rem; font-weight: 900; }
+    .ops-chip.ok { border-color: #a9d8bb; background: #eaf7ef; color: #087443; }
+    .ops-chip.warn { border-color: #edc47d; background: #fff8e9; color: #8a5100; }
+    .ops-chip.alert { border-color: #e2a4ac; background: #fff0f2; color: #9d1d28; }
+    .ops-next-action { color: var(--dark); font-weight: 800; line-height: 1.35; }
     .ops-alert { color: #9d1d28; font-weight: 900; }
     .ops-ok { color: #087443; font-weight: 900; }
     .ops-warn { color: #9a5a00; font-weight: 900; }
@@ -258,6 +267,7 @@
       .cloud-sale-row { grid-template-columns: 1fr; }
       .archive-summary { grid-template-columns: 1fr; }
       .ops-summary { grid-template-columns: 1fr 1fr; }
+      .ops-view-heading { align-items: flex-start; flex-direction: column; }
       .ops-row { grid-template-columns: 1fr; }
       .ops-operator-row { grid-template-columns: 1fr 1fr; }
       .admin-grid, .admin-user-row { grid-template-columns: 1fr; }
@@ -494,10 +504,11 @@
         <p class="mode-summary" id="modeSummary">BHPH: se generan todos los documentos del paquete.</p>
       </div>
       <section class="ops-report-panel private-workspace" id="opsReportPanel" hidden>
-        <h3>Reportes y agenda: GPS / Seguro</h3>
-        <p class="storage-note">Los cuadros son filtros: al seleccionarlos ves solamente esos casos. Cada registro muestra la última acción, el operador, fecha y hora.</p>
+        <h3>Control GPS / Seguro</h3>
+        <p class="storage-note">Selecciona un cuadro para ver solamente los casos que requieren esa clase de atención.</p>
         <div class="ops-summary" id="opsSummary"></div>
-        <section class="ops-calendar" aria-label="Calendario del operador">
+        <div class="ops-filters" id="opsSubfilters" aria-label="Filtros del reporte"></div>
+        <section class="ops-calendar" id="opsCalendarPanel" aria-label="Calendario del operador" hidden>
           <div class="ops-calendar-header">
             <h4 id="opsCalendarTitle">Agenda del operador</h4>
             <div><button type="button" class="secondary" id="opsCalendarPrevious" aria-label="Mes anterior">&lt;</button><button type="button" class="secondary" id="opsCalendarNext" aria-label="Mes siguiente">&gt;</button></div>
@@ -506,7 +517,7 @@
           <div class="ops-calendar-grid" id="opsCalendarGrid"></div>
           <div class="ops-calendar-agenda" id="opsCalendarAgenda"></div>
         </section>
-        <div class="process-panel" id="opsOperatorPanel">
+        <div class="process-panel" id="opsOperatorPanel" hidden>
           <h4>Actividad del operador</h4>
           <div class="ops-operator-summary" id="opsOperatorSummary"></div>
         </div>
@@ -514,6 +525,7 @@
           <label>Buscar cliente, VIN, stock, contrato, email o telefono <input id="opsSearch" autocomplete="off"></label>
           <button type="button" class="secondary" id="clearOpsSearch">Limpiar</button>
         </div>
+        <div class="ops-view-heading"><h4 id="opsResultsTitle">Todos los expedientes</h4><span id="opsResultsCount"></span></div>
         <div class="ops-results" id="opsResults"></div>
       </section>
       <form id="saleForm" class="grid private-workspace">
