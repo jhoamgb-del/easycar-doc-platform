@@ -142,9 +142,14 @@
     .ops-filters { display: flex; gap: 8px; flex-wrap: wrap; }
     .ops-filters button { min-height: 34px; padding: 0 10px; }
     .ops-filters button.active { background: var(--blue); color: #fff; }
+    .ops-health-strip { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #d5e1f1; border-left: 5px solid var(--blue); border-radius: 6px; background: #f7faff; color: var(--dark); font-size: .82rem; font-weight: 800; }
+    .ops-health-strip.critical { border-left-color: var(--red); background: #fff6f7; }
+    .ops-health-strip small { color: var(--muted); font-size: .72rem; font-weight: 700; white-space: nowrap; }
     .ops-view-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .ops-view-heading h4 { margin: 0; color: var(--dark); font-size: .92rem; }
-    .ops-view-heading span { color: var(--muted); font-size: .78rem; }
+    .ops-view-actions { display: flex; align-items: center; gap: 8px; }
+    .ops-view-actions span { color: var(--muted); font-size: .78rem; }
+    .ops-view-actions button { min-height: 32px; padding: 0 10px; }
     .ops-results { display: grid; gap: 8px; }
     .ops-operator-summary { display: grid; gap: 7px; }
     .ops-operator-row { display: grid; grid-template-columns: minmax(150px, 1fr) repeat(4, auto); gap: 10px; align-items: center; padding: 9px 10px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; color: var(--muted); font-size: .82rem; }
@@ -174,6 +179,23 @@
     .ops-chip.warn { border-color: #edc47d; background: #fff8e9; color: #8a5100; }
     .ops-chip.alert { border-color: #e2a4ac; background: #fff0f2; color: #9d1d28; }
     .ops-next-action { color: var(--dark); font-weight: 800; line-height: 1.35; }
+    .ops-due { margin-top: 3px; color: var(--muted); font-size: .75rem; font-weight: 700; }
+    .ops-history-dialog { width: min(860px, calc(100% - 28px)); max-height: min(86vh, 900px); padding: 0; border: 1px solid #b9cbe4; border-radius: 7px; background: #fff; box-shadow: 0 20px 60px rgba(18, 35, 61, .25); color: var(--dark); }
+    .ops-history-dialog::backdrop { background: rgba(18, 35, 61, .5); }
+    .ops-history-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 16px 18px; border-bottom: 3px solid var(--red); background: #fff; }
+    .ops-history-header h3 { margin: 0; font-size: 1rem; }
+    .ops-history-header p { margin: 4px 0 0; color: var(--muted); font-size: .8rem; }
+    .ops-history-header button { min-width: 36px; min-height: 36px; padding: 0; font-size: 1.2rem; }
+    .ops-history-body { display: grid; gap: 16px; padding: 16px 18px 20px; overflow: auto; }
+    .ops-history-body h4 { margin: 0 0 8px; font-size: .86rem; }
+    .ops-history-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; border-top: 1px solid #d5e1f1; }
+    .ops-history-fact { padding: 9px 0; border-bottom: 1px solid #d5e1f1; }
+    .ops-history-fact strong { display: block; margin-bottom: 3px; font-size: .75rem; text-transform: uppercase; }
+    .ops-history-fact span { color: var(--muted); font-size: .82rem; line-height: 1.35; }
+    .ops-history-timeline { display: grid; gap: 7px; }
+    .ops-history-entry { padding: 10px 11px; border-left: 4px solid var(--blue); background: #f6f9fd; }
+    .ops-history-entry strong { display: block; font-size: .81rem; }
+    .ops-history-entry span { display: block; margin-top: 3px; color: var(--muted); font-size: .78rem; line-height: 1.4; }
     .ops-alert { color: #9d1d28; font-weight: 900; }
     .ops-ok { color: #087443; font-weight: 900; }
     .ops-warn { color: #9a5a00; font-weight: 900; }
@@ -267,7 +289,12 @@
       .cloud-sale-row { grid-template-columns: 1fr; }
       .archive-summary { grid-template-columns: 1fr; }
       .ops-summary { grid-template-columns: 1fr 1fr; }
+      .ops-health-strip { align-items: flex-start; flex-direction: column; }
+      .ops-health-strip small { white-space: normal; }
       .ops-view-heading { align-items: flex-start; flex-direction: column; }
+      .ops-view-actions { align-items: stretch; flex-direction: column; width: 100%; }
+      .ops-view-actions button { width: 100%; }
+      .ops-history-facts { grid-template-columns: 1fr; }
       .ops-row { grid-template-columns: 1fr; }
       .ops-operator-row { grid-template-columns: 1fr 1fr; }
       .admin-grid, .admin-user-row { grid-template-columns: 1fr; }
@@ -507,6 +534,7 @@
         <h3>Control GPS / Seguro</h3>
         <p class="storage-note">Selecciona un cuadro para ver solamente los casos que requieren esa clase de atención.</p>
         <div class="ops-summary" id="opsSummary"></div>
+        <div class="ops-health-strip" id="opsHealthStrip"></div>
         <div class="ops-filters" id="opsSubfilters" aria-label="Filtros del reporte"></div>
         <section class="ops-calendar" id="opsCalendarPanel" aria-label="Calendario del operador" hidden>
           <div class="ops-calendar-header">
@@ -525,9 +553,22 @@
           <label>Buscar cliente, VIN, stock, contrato, email o telefono <input id="opsSearch" autocomplete="off"></label>
           <button type="button" class="secondary" id="clearOpsSearch">Limpiar</button>
         </div>
-        <div class="ops-view-heading"><h4 id="opsResultsTitle">Todos los expedientes</h4><span id="opsResultsCount"></span></div>
+        <div class="ops-view-heading">
+          <h4 id="opsResultsTitle">Todos los expedientes</h4>
+          <div class="ops-view-actions"><span id="opsResultsCount"></span><button type="button" class="secondary" id="opsRefreshReport">Actualizar</button><button type="button" class="secondary" id="opsExportReport">Descargar reporte CSV</button></div>
+        </div>
         <div class="ops-results" id="opsResults"></div>
       </section>
+      <dialog class="ops-history-dialog" id="opsHistoryDialog">
+        <div class="ops-history-header">
+          <div><h3 id="opsHistoryTitle">Historial del expediente</h3><p id="opsHistoryMeta"></p></div>
+          <form method="dialog"><button type="submit" class="secondary" aria-label="Cerrar historial">&times;</button></form>
+        </div>
+        <div class="ops-history-body">
+          <section><h4>Estado actual</h4><div class="ops-history-facts" id="opsHistoryFacts"></div></section>
+          <section><h4>Actividad auditable</h4><div class="ops-history-timeline" id="opsHistoryTimeline"></div></section>
+        </div>
+      </dialog>
       <form id="saleForm" class="grid private-workspace">
         <div class="section-title">Cliente</div>
         <div class="name-grid">

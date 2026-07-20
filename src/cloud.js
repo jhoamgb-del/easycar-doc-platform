@@ -45,8 +45,16 @@ const controls = {
   opsSubfilters: byId('opsSubfilters'),
   opsCalendarPanel: byId('opsCalendarPanel'),
   opsOperatorPanel: byId('opsOperatorPanel'),
+  opsHealthStrip: byId('opsHealthStrip'),
   opsResultsTitle: byId('opsResultsTitle'),
   opsResultsCount: byId('opsResultsCount'),
+  opsRefreshReport: byId('opsRefreshReport'),
+  opsExportReport: byId('opsExportReport'),
+  opsHistoryDialog: byId('opsHistoryDialog'),
+  opsHistoryTitle: byId('opsHistoryTitle'),
+  opsHistoryMeta: byId('opsHistoryMeta'),
+  opsHistoryFacts: byId('opsHistoryFacts'),
+  opsHistoryTimeline: byId('opsHistoryTimeline'),
   opsCalendarTitle: byId('opsCalendarTitle'),
   opsCalendarGrid: byId('opsCalendarGrid'),
   opsCalendarAgenda: byId('opsCalendarAgenda'),
@@ -72,6 +80,7 @@ let session = null;
 let currentSaleId = null;
 let opsFilter = 'all';
 let opsProfilesCache = [];
+let opsLoadedAt = null;
 let autosaveTimer = null;
 let saleInsertPromise = null;
 let realtimeChannel = null;
@@ -127,6 +136,7 @@ function setSessionUi(nextSession) {
     subscribeToCentralUpdates();
   } else {
     opsProfilesCache = [];
+    opsLoadedAt = null;
     controls.opsSummary?.replaceChildren();
     controls.opsResults?.replaceChildren();
     unsubscribeFromCentralUpdates();
@@ -726,6 +736,7 @@ async function saveInsuranceGpsIdentification(formData) {
   if (formData.insurance_address_matches === 'No' && !String(formData.insurance_policy_address || '').trim()) {
     throw new Error('La direccion no coincide. Registra la direccion que aparece en la poliza.');
   }
+  formData.insurance_status = normalizedInsuranceStatus(formData);
   if (formData.insurance_status === 'Activo OK') {
     formData.insurance_payments_current = 'Si';
     formData.insurance_comprehensive = 'Si';
@@ -767,7 +778,9 @@ async function saveInsuranceGpsIdentification(formData) {
 async function loadSale(id) {
   const { data, error } = await supabase.from('doc_sales').select('*').eq('id', id).single();
   if (error) throw error;
-  app.loadFormData(data.form_data);
+  const formData = { ...(data.form_data || {}) };
+  formData.insurance_status = normalizedInsuranceStatus(formData);
+  app.loadFormData(formData);
   setCurrentSale(data.id, data.status);
   await loadSaleOperationHistory(data.id);
   setCloudStatus(`Venta de ${data.customer_name || 'cliente'} abierta desde el expediente central.`, 'good');
@@ -1134,6 +1147,17 @@ function isDueTodayOrEarlier(dateValue) {
   return date <= today;
 }
 
+function normalizedInsuranceStatus(form = {}) {
+  if (form.insurance_status !== 'Activo') return form.insurance_status || '';
+  const legacyPolicyComplete = form.insurance_payments_current === 'Si'
+    && form.insurance_comprehensive === 'Si'
+    && form.insurance_collision === 'Si'
+    && form.insurance_lienholder === 'Si'
+    && form.insurance_address_matches === 'Si'
+    && !isPastDue(form.insurance_expiration_date);
+  return legacyPolicyComplete ? 'Activo OK' : 'Activo pending';
+}
+
 function daysText(days) {
   if (days === null || days === undefined) return 'sin fecha';
   if (days < 0) return `en ${Math.abs(days)} dias`;
@@ -1154,7 +1178,8 @@ function latestOperatorOperation(operations = []) {
 }
 
 function buildOpsProfile(sale, operations = []) {
-  const form = sale.form_data || {};
+  const form = { ...(sale.form_data || {}) };
+  form.insurance_status = normalizedInsuranceStatus(form);
   const latest = latestOperatorOperation(operations);
   const lastInsuranceReviewSource = form.insurance_verified_date || form.insurance_first_review_date || form.vehicle_loaded_date || sale.transaction_date || sale.created_at;
   const lastGpsReviewSource = form.gps_last_seen_at || form.gps_first_review_date || form.vehicle_loaded_date || sale.transaction_date || sale.created_at;
@@ -1210,10 +1235,18 @@ function buildOpsProfile(sale, operations = []) {
   const siniestroOpen = form.recovery_event_type === 'Siniestro' || insuranceClaimOpen;
   const gapClaimOpen = ['GAP abierto', 'Esperando pago GAP'].includes(form.gap_claim_status);
   const daysSinceOps = daysBetween(latest?.created_at);
+  const saleAgeDays = daysBetween(sale.created_at);
   const noteProblem = Boolean(latest) && (!String(latest.note || '').trim() || String(latest.note || '').trim().length < 12);
-  const noFollowUp = Boolean(latest) && daysSinceOps !== null && daysSinceOps > 14;
+  const noFollowUp = latest
+    ? daysSinceOps !== null && daysSinceOps > 14
+    : saleAgeDays !== null && saleAgeDays >= 1;
   const overdue = !repoConfirmed && (insuranceOverdue || gpsOverdue || (gapClaimDays !== null && gapClaimDays > 7) || (insuranceClaimDays !== null && insuranceClaimDays > 7));
-  const dueToday = !repoConfirmed && (isDueTodayOrEarlier(form.insurance_next_review_date)
+  const unscheduledIssue = !repoConfirmed && ((policyProblem && !form.insurance_next_review_date)
+    || (gpsProblem && !form.gps_next_review_date)
+    || (gapOpen && !form.gap_last_call_date)
+    || (insuranceClaimOpen && !form.insurance_claim_last_call_date));
+  const dueToday = !repoConfirmed && (unscheduledIssue
+    || isDueTodayOrEarlier(form.insurance_next_review_date)
     || isDueTodayOrEarlier(form.gps_next_review_date)
     || (gapOpen && (gapClaimDays === null || gapClaimDays >= 7))
     || (insuranceClaimOpen && (insuranceClaimDays === null || insuranceClaimDays >= 7)));
@@ -1242,13 +1275,55 @@ function buildOpsProfile(sale, operations = []) {
     alerts.length = 0;
     alerts.push('Repo confirmado en dealer; revision rutinaria cerrada');
   }
+  const critical = !repoConfirmed && (insuranceCancelled
+    || insuranceExpired
+    || form.gps_device_status === 'Desconectado'
+    || gpsOutsideFlorida
+    || (recoveryOpen && (!form.recovery_last_location || !form.recovery_policy_active_on_event))
+    || (gapClaimDays !== null && gapClaimDays >= 7)
+    || (insuranceClaimDays !== null && insuranceClaimDays >= 7));
+  const severity = repoConfirmed ? 'closed' : critical ? 'critical' : alerts.length ? 'attention' : 'ok';
   return {
     sale, form, operations, latest, policyProblem, gpsProblem, gpsMissing,
     gpsOutsideFlorida, gpsLocationUnconfirmed, gpsMileageExceeded, gapProblem, gapOpen,
     insuranceClaimOpen, insuranceCancelled, insuranceInvalidated, insuranceExpired, insuranceRepossession, repoConfirmed,
     insuranceCancelledDays, siniestroOpen, gapClaimOpen, recoveryOpen, noFollowUp, noteProblem, overdue, alerts,
-    insuranceDaysSince, gpsDaysSince, gapClaimDays, insuranceClaimDays, daysSinceOps, dueToday
+    insuranceDaysSince, gpsDaysSince, gapClaimDays, insuranceClaimDays, daysSinceOps, saleAgeDays,
+    dueToday, unscheduledIssue, critical, severity
   };
+}
+
+function primaryOpsAction(profile) {
+  const form = profile.form;
+  if (profile.repoConfirmed) return 'Proceso cerrado: vehiculo confirmado en el dealer';
+  if (form.gps_device_status === 'Desconectado') return 'SOS: localizar el vehiculo y verificar el GPS hoy';
+  if (profile.insuranceCancelled || profile.insuranceExpired) return 'Contactar al cliente y resolver la poliza hoy';
+  if (profile.gpsOutsideFlorida) return 'Confirmar ubicacion y escalar salida de Florida';
+  if (profile.recoveryOpen && !form.recovery_last_location) return 'Verificar GPS y registrar ubicacion del vehiculo';
+  if (profile.recoveryOpen && !form.recovery_policy_active_on_event) return 'Confirmar si la poliza estaba activa en la fecha del evento';
+  if (profile.insuranceClaimOpen && (profile.insuranceClaimDays === null || profile.insuranceClaimDays >= 7)) return 'Llamar al seguro y actualizar el reclamo';
+  if (profile.gapOpen && (profile.gapClaimDays === null || profile.gapClaimDays >= 7)) return 'Dar seguimiento al reclamo GAP y documentos pendientes';
+  if (!form.insurance_policy_number) return 'Registrar y verificar la poliza del cliente';
+  if (form.insurance_status === 'Activo pending') return 'Completar la verificacion de la poliza';
+  if (profile.policyProblem) return 'Corregir la irregularidad de seguro y dejar nota';
+  if (profile.gpsMissing) return 'Registrar IMEI y proveedor del GPS';
+  if (profile.gpsProblem) return 'Verificar GPS, ubicacion, conexion y millas';
+  if (profile.noFollowUp) return 'Registrar actividad y resultado del operador';
+  return 'Sin accion pendiente';
+}
+
+function nextOpsDueText(profile) {
+  if (profile.repoConfirmed) return 'Revision rutinaria cerrada';
+  const dates = [
+    profile.form.insurance_next_review_date,
+    profile.form.gps_next_review_date
+  ].filter(Boolean).sort();
+  if (!dates.length) return profile.unscheduledIssue ? 'Sin proxima fecha: requiere programacion' : 'Sin fecha pendiente';
+  const next = dates[0];
+  const days = daysBetween(next);
+  if (days > 0) return `Vencida hace ${days} dia${days === 1 ? '' : 's'}: ${formatDateDisplay(next)}`;
+  if (days === 0) return `Vence hoy: ${formatDateDisplay(next)}`;
+  return `Proxima fecha: ${formatDateDisplay(next)}`;
 }
 
 function opsVisible(profile) {
@@ -1404,13 +1479,15 @@ function renderOperatorSummary(operations) {
     const key = operation.created_by || 'sin_usuario';
     const name = operation.operator_name || `Usuario ${String(key).slice(0, 8)}`;
     if (!byOperator.has(key)) {
-      byOperator.set(key, { name, total: 0, today: 0, week: 0, missingNotes: 0, latest: null });
+      byOperator.set(key, { name, total: 0, today: 0, week: 0, completed: 0, pending: 0, missingNotes: 0, latest: null });
     }
     const summary = byOperator.get(key);
     const createdAt = new Date(operation.created_at || 0);
     summary.total += 1;
     if (createdAt >= today) summary.today += 1;
     if (createdAt >= sevenDays) summary.week += 1;
+    if (['Completado', 'No aplica'].includes(operation.status)) summary.completed += 1;
+    else summary.pending += 1;
     if (String(operation.note || '').trim().length < 12) summary.missingNotes += 1;
     if (!summary.latest || createdAt > new Date(summary.latest.created_at || 0)) summary.latest = operation;
   });
@@ -1426,10 +1503,10 @@ function renderOperatorSummary(operations) {
       const weekText = document.createElement('span');
       weekText.textContent = `7 dias: ${summary.week}`;
       const totalText = document.createElement('span');
-      totalText.textContent = `Total: ${summary.total}`;
+      totalText.textContent = `Completadas: ${summary.completed}`;
       const latestText = document.createElement('span');
       const latestDate = summary.latest?.created_at ? new Date(summary.latest.created_at).toLocaleString('en-US') : 'sin fecha';
-      latestText.textContent = `${summary.missingNotes ? `Sin nota: ${summary.missingNotes} | ` : ''}Ultima: ${latestDate}`;
+      latestText.textContent = `Pendientes: ${summary.pending}${summary.missingNotes ? ` | Sin nota: ${summary.missingNotes}` : ''} | Ultima: ${latestDate}`;
       row.append(name, todayText, weekText, totalText, latestText);
       controls.opsOperatorSummary.append(row);
     });
@@ -1469,25 +1546,59 @@ function openOpsSale(profile) {
 }
 
 function showOpsHistory(profile) {
-  const header = `${profile.sale.customer_name || 'Cliente sin nombre'}\n${profile.sale.vehicle_description || 'Vehiculo'}${profile.sale.vin ? ` | VIN ${profile.sale.vin}` : ''}`;
-  const current = [
-    `Cliente: fecha de nacimiento ${profile.form.customer_birth_date || 'pendiente'}`,
-    `Seguro: ${profile.form.insurance_status || 'sin verificar'} | Poliza: ${profile.form.insurance_policy_number || 'sin numero'} | Vence: ${profile.form.insurance_expiration_date || 'sin fecha'} | Cancelada/anulada desde: ${profile.form.insurance_cancelled_since || 'no aplica'} | Sin revisar: ${daysText(profile.insuranceDaysSince)}`,
-    `GPS: ${profile.form.gps_device_status || 'sin verificar'} | IMEI: ${profile.form.gps_imei || 'sin IMEI'} | Ubicacion: ${profile.form.gps_last_location || 'sin ubicacion'} (${profile.form.gps_location_jurisdiction || 'por confirmar'}) | Millas periodo: ${profile.form.gps_monthly_miles || 'sin dato'} | Sin revisar: ${daysText(profile.gpsDaysSince)}`,
-    `GAP: ${profile.form.gap_has_coverage || 'sin verificar'} | Contrato: ${profile.form.gap_contract_number || 'sin contrato'} | VIN GAP: ${profile.form.gap_issued_vin || 'sin VIN'} | Reclamo abierto: ${daysText(profile.gapClaimDays)}`,
-    `Evento: ${profile.form.recovery_event_type || 'ninguno'} | Fecha: ${profile.form.recovery_event_date || 'sin fecha'} | Poliza activa ese dia: ${profile.form.recovery_policy_active_on_event || 'sin confirmar'}`
-  ].join('\n');
-  const history = profile.operations.length
-    ? profile.operations.slice(0, 12).map(operation => {
-      const date = operation.created_at ? new Date(operation.created_at).toLocaleString('en-US') : 'sin fecha';
-      const nextAction = operation.payload?.ops_next_action ? ` | Proxima accion: ${operation.payload.ops_next_action}` : '';
-      const operator = (operation.operator_name || operation.created_by)
-        ? ` | Operador: ${operation.operator_name || String(operation.created_by).slice(0, 8)}`
+  if (!controls.opsHistoryDialog) return;
+  controls.opsHistoryTitle.textContent = profile.sale.customer_name || 'Cliente sin nombre';
+  controls.opsHistoryMeta.textContent = [
+    profile.sale.vehicle_description || 'Vehiculo sin completar',
+    profile.sale.vin ? `VIN ${profile.sale.vin}` : '',
+    profile.sale.stock_number ? `Stock ${profile.sale.stock_number}` : ''
+  ].filter(Boolean).join(' | ');
+  const facts = [
+    ['Prioridad', profile.severity === 'critical' ? 'CRITICO' : profile.severity === 'attention' ? 'PENDIENTE' : profile.severity === 'closed' ? 'CERRADO' : 'AL DIA'],
+    ['Proxima accion', primaryOpsAction(profile)],
+    ['Fecha pendiente', nextOpsDueText(profile)],
+    ['Cliente', `Nacimiento: ${profile.form.customer_birth_date ? formatDateDisplay(profile.form.customer_birth_date) : 'pendiente'} | Telefono: ${profile.sale.customer_phone || 'sin telefono'}`],
+    ['Seguro', `${profile.form.insurance_status || 'sin verificar'} | Poliza ${profile.form.insurance_policy_number || 'sin numero'} | Vence ${profile.form.insurance_expiration_date ? formatDateDisplay(profile.form.insurance_expiration_date) : 'sin fecha'}`],
+    ['Cobertura', `Comprehensive + Collision: ${profile.form.insurance_comprehensive === 'Si' && profile.form.insurance_collision === 'Si' ? 'Si' : 'No confirmado'} | EasyCar lien holder: ${profile.form.insurance_lienholder || 'no confirmado'}`],
+    ['GPS', `${profile.form.gps_device_status || 'sin verificar'} | IMEI ${profile.form.gps_imei || 'sin registrar'} | Proveedor ${profile.form.gps_provider || 'sin registrar'}`],
+    ['Ubicacion y millas', `${profile.form.gps_last_location || 'sin ubicacion'} | ${profile.form.gps_location_jurisdiction || 'jurisdiccion pendiente'} | ${profile.form.gps_monthly_miles || 'sin millas'} en el periodo`],
+    ['Siniestro / GAP', `${profile.form.gap_claim_status || 'sin reclamo'} | Seguro ${profile.form.insurance_claim_number || 'sin claim'} | GAP ${profile.form.gap_claim_number || 'sin claim'}`],
+    ['Reposicion / entrega', `${profile.form.recovery_event_type || 'ninguno'} | Fecha ${profile.form.recovery_event_date ? formatDateDisplay(profile.form.recovery_event_date) : 'sin fecha'} | Ubicacion ${profile.form.recovery_last_location || 'sin confirmar'} | Poliza activa: ${profile.form.recovery_policy_active_on_event || 'sin confirmar'}`]
+  ];
+  controls.opsHistoryFacts.replaceChildren(...facts.map(([label, value]) => {
+    const fact = document.createElement('div');
+    fact.className = 'ops-history-fact';
+    const title = document.createElement('strong');
+    title.textContent = label;
+    const detail = document.createElement('span');
+    detail.textContent = value;
+    fact.append(title, detail);
+    return fact;
+  }));
+  controls.opsHistoryTimeline.replaceChildren();
+  if (!profile.operations.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-history';
+    empty.textContent = 'No existe actividad del operador en este expediente.';
+    controls.opsHistoryTimeline.append(empty);
+  } else {
+    profile.operations.slice(0, 50).forEach(operation => {
+      const entry = document.createElement('div');
+      entry.className = 'ops-history-entry';
+      const title = document.createElement('strong');
+      const exactDate = operation.created_at ? new Date(operation.created_at).toLocaleString('en-US') : 'Sin fecha';
+      title.textContent = `${exactDate} | ${operation.event_type || 'Seguimiento'}`;
+      const detail = document.createElement('span');
+      const operator = operation.operator_name || (operation.created_by ? `Usuario ${String(operation.created_by).slice(0, 8)}` : 'Sin operador');
+      const nextAction = operation.payload?.ops_next_action || operation.follow_up_at
+        ? ` | Proxima accion: ${operation.payload?.ops_next_action || formatDateDisplay(operation.follow_up_at)}`
         : '';
-      return `- ${date}: ${operation.event_type} | ${operation.status}${operator}${nextAction}${operation.note ? ` | Nota: ${operation.note}` : ' | Sin nota'}`;
-    }).join('\n')
-    : '- Sin historial operativo registrado todavia.';
-  window.alert(`${header}\n\nESTADO ACTUAL\n${current}\n\nHISTORIAL DEL OPERADOR\n${history}`);
+      detail.textContent = `Operador: ${operator} | Resultado: ${operation.status || 'Registrado'}${nextAction} | Nota: ${operation.note || 'Sin nota'}`;
+      entry.append(title, detail);
+      controls.opsHistoryTimeline.append(entry);
+    });
+  }
+  controls.opsHistoryDialog.showModal();
 }
 
 function localDateKey(value) {
@@ -1580,6 +1691,19 @@ function renderOpsReport(profiles) {
     renderOpsMetric('Siniestros / GAP', profiles.filter(profile => profile.siniestroOpen || profile.gapClaimOpen || profile.recoveryOpen).length, 'claims_gap', 'Reclamos y recuperaciones'),
     renderOpsMetric('Auditoria', profiles.filter(profile => profile.noFollowUp || profile.noteProblem).length, 'operator', `${operatorActions.filter(operation => new Date(operation.created_at || 0) >= today).length} acciones hoy`)
   );
+  const criticalCount = profiles.filter(profile => profile.critical).length;
+  const unscheduledCount = profiles.filter(profile => profile.unscheduledIssue).length;
+  const withoutActivityCount = profiles.filter(profile => !profile.latest && !profile.repoConfirmed).length;
+  if (controls.opsHealthStrip) {
+    controls.opsHealthStrip.classList.toggle('critical', criticalCount > 0);
+    const summary = document.createElement('span');
+    summary.textContent = criticalCount
+      ? `${criticalCount} caso${criticalCount === 1 ? '' : 's'} critico${criticalCount === 1 ? '' : 's'} | ${unscheduledCount} sin proxima fecha | ${withoutActivityCount} sin actividad del operador`
+      : `Sin casos criticos | ${unscheduledCount} sin proxima fecha | ${withoutActivityCount} sin actividad del operador`;
+    const updated = document.createElement('small');
+    updated.textContent = opsLoadedAt ? `Actualizado ${opsLoadedAt.toLocaleString('en-US')}` : 'Cargando informacion';
+    controls.opsHealthStrip.replaceChildren(summary, updated);
+  }
   renderOpsSubfilters();
   renderOperatorSummary(operations);
   renderOpsCalendar(profiles);
@@ -1646,6 +1770,7 @@ function renderOpsReport(profiles) {
       chip.textContent = text;
       statusLine.append(chip);
     };
+    addChip(profile.severity === 'critical' ? 'CRITICO' : profile.severity === 'attention' ? 'PENDIENTE' : profile.severity === 'closed' ? 'CERRADO' : 'AL DIA', profile.severity === 'critical' ? 'alert' : profile.severity === 'attention' ? 'warn' : 'ok');
     addChip(`Seguro: ${profile.form.insurance_status || 'Sin verificar'}`, profile.policyProblem ? 'alert' : 'ok');
     addChip(`GPS: ${profile.form.gps_device_status || 'Sin verificar'}`, profile.gpsProblem ? 'alert' : 'ok');
     if (profile.siniestroOpen) addChip('Siniestro', 'warn');
@@ -1653,13 +1778,16 @@ function renderOpsReport(profiles) {
     if (profile.recoveryOpen) addChip('Reposicion / entrega', 'warn');
     const nextAction = document.createElement('div');
     nextAction.className = 'ops-next-action';
-    nextAction.textContent = profile.alerts[0] || 'Sin accion pendiente';
+    nextAction.textContent = primaryOpsAction(profile);
+    const due = document.createElement('div');
+    due.className = 'ops-due';
+    due.textContent = nextOpsDueText(profile);
     const audit = document.createElement('div');
     audit.className = 'archive-meta';
     audit.textContent = profile.latest
       ? `Ultima accion: ${daysText(profile.daysSinceOps)}${profile.latest.operator_name ? ` por ${profile.latest.operator_name}` : ''}`
       : 'Sin actividad registrada';
-    status.append(statusLine, nextAction, audit);
+    status.append(statusLine, nextAction, due, audit);
 
     const actions = document.createElement('div');
     actions.className = 'archive-docs';
@@ -1683,6 +1811,45 @@ function renderOpsReport(profiles) {
     row.append(identity, vehicle, status, actions);
     controls.opsResults.append(row);
   });
+}
+
+function exportOpsReport() {
+  const visibleProfiles = opsProfilesCache.filter(opsVisible);
+  const headers = [
+    'Prioridad', 'Cliente', 'Telefono', 'Email', 'Vehiculo', 'VIN', 'Stock',
+    'Estatus seguro', 'Numero poliza', 'Vencimiento poliza', 'Proxima revision seguro',
+    'Estatus GPS', 'IMEI', 'Proveedor GPS', 'Ultima ubicacion', 'Proxima revision GPS',
+    'Evento', 'Estatus GAP', 'Proxima accion', 'Fecha pendiente', 'Ultimo operador', 'Ultima actividad', 'Ultima nota'
+  ];
+  const rows = [headers, ...visibleProfiles.map(profile => [
+    profile.severity === 'critical' ? 'CRITICO' : profile.severity === 'attention' ? 'PENDIENTE' : profile.severity === 'closed' ? 'CERRADO' : 'AL DIA',
+    profile.sale.customer_name,
+    profile.sale.customer_phone,
+    profile.sale.customer_email,
+    profile.sale.vehicle_description,
+    profile.sale.vin,
+    profile.sale.stock_number,
+    profile.form.insurance_status,
+    profile.form.insurance_policy_number,
+    profile.form.insurance_expiration_date,
+    profile.form.insurance_next_review_date,
+    profile.form.gps_device_status,
+    profile.form.gps_imei,
+    profile.form.gps_provider,
+    profile.form.gps_last_location,
+    profile.form.gps_next_review_date,
+    profile.form.recovery_event_type,
+    profile.form.gap_claim_status,
+    primaryOpsAction(profile),
+    nextOpsDueText(profile),
+    profile.latest?.operator_name,
+    profile.latest?.created_at,
+    profile.latest?.note
+  ])];
+  const stamp = new Date().toISOString().slice(0, 10);
+  const filterName = String(opsFilter || 'todos').replace(/[^a-z0-9_-]+/gi, '_');
+  downloadCsv(`DOC_EASYCAR_reporte_${filterName}_${stamp}.csv`, rows);
+  setCloudStatus(`Reporte descargado: ${visibleProfiles.length} caso${visibleProfiles.length === 1 ? '' : 's'}.`, 'good');
 }
 
 async function loadOpsReport() {
@@ -1715,6 +1882,7 @@ async function loadOpsReport() {
       if (error.code === '42P01' || /doc_sale_operations|relation/i.test(error.message || '')) {
         setCloudStatus('Control GPS / Seguro visible. Falta activar la tabla de auditoria en Supabase para guardar historial del operador.', 'error');
         opsProfilesCache = sales.map(sale => buildOpsProfile(sale, []));
+        opsLoadedAt = new Date();
         renderOpsReport(opsProfilesCache);
         return;
       }
@@ -1744,6 +1912,7 @@ async function loadOpsReport() {
     bySale.get(operation.sale_id).push(operation);
   });
   opsProfilesCache = sales.map(sale => buildOpsProfile(sale, bySale.get(sale.id) || []));
+  opsLoadedAt = new Date();
   renderOpsReport(opsProfilesCache);
 }
 
@@ -2082,6 +2251,8 @@ if (!configured) {
   };
   controls.opsSummary.addEventListener('click', setOpsFilterFromEvent);
   controls.opsSubfilters?.addEventListener('click', setOpsFilterFromEvent);
+  controls.opsRefreshReport?.addEventListener('click', () => loadOpsReport().catch(error => setCloudStatus(error.message, 'error')));
+  controls.opsExportReport?.addEventListener('click', exportOpsReport);
   controls.opsCalendarPrevious?.addEventListener('click', () => {
     opsCalendarMonth = new Date(opsCalendarMonth.getFullYear(), opsCalendarMonth.getMonth() - 1, 1);
     renderOpsReport(opsProfilesCache);
