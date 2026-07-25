@@ -168,7 +168,7 @@
     .ops-calendar-day strong { display: block; font-size: .75rem; }
     .ops-calendar-day small { display: block; margin-top: 6px; color: var(--blue); font-size: .67rem; font-weight: 800; line-height: 1.2; }
     .ops-calendar-agenda { display: grid; gap: 6px; }
-    .ops-calendar-task { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 9px; border: 1px solid #d5e1f1; border-radius: 5px; background: #fff; font-size: .8rem; }
+    .ops-calendar-task { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 8px 9px; border: 1px solid #d5e1f1; border-radius: 5px; background: #fff; font-size: .8rem; }
     .ops-calendar-task strong { color: var(--dark); }
     .ops-calendar-task button { min-height: 30px; padding: 0 10px; }
     .ops-row { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .9fr) minmax(220px, 1fr) auto; gap: 12px; align-items: center; padding: 11px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; font-size: .82rem; }
@@ -303,6 +303,7 @@
       .ops-history-facts { grid-template-columns: 1fr; }
       .ops-row { grid-template-columns: 1fr; }
       .ops-operator-row { grid-template-columns: 1fr 1fr; }
+      .ops-calendar-task { grid-template-columns: 1fr; }
       .admin-grid, .admin-user-row { grid-template-columns: 1fr; }
       .ops-action { align-items: stretch; flex-direction: column; }
       .ops-action button { width: 100%; }
@@ -879,6 +880,8 @@
             <option value="Verificacion seguro">Verificacion seguro</option>
             <option value="Verificacion GPS">Verificacion GPS</option>
             <option value="Llamada seguro">Llamada seguro</option>
+            <option value="Llamada perito">Llamada perito</option>
+            <option value="Llamada taller">Llamada taller</option>
             <option value="Llamada cliente">Llamada cliente</option>
             <option value="Revision GPS">Revision GPS</option>
             <option value="Seguimiento GAP">Seguimiento GAP</option>
@@ -900,6 +903,9 @@
           </select>
         </label>
         <label class="full insurance-only">Proxima accion del operador <input id="ops_next_action" placeholder="Ej. llamar agencia, pedir poliza, verificar ubicacion, abrir GAP"></label>
+        <label class="insurance-only">Fecha de proxima accion <input id="ops_next_action_date" type="date"></label>
+        <label class="insurance-only">Hora de recordatorio <input id="ops_next_action_time" type="time" value="09:00"></label>
+        <div class="process-actions insurance-only"><button type="button" class="secondary" id="addCurrentTaskToGoogleCalendar">Agregar a Google Calendar</button></div>
         <label class="full insurance-only">Notas Seguros / GPS / GAP <textarea id="insurance_gps_notes"></textarea></label>
         <div class="ops-action insurance-only">
           <button type="button" class="secondary" id="saveInsuranceGpsData">Guardar datos de Seguro y GPS</button>
@@ -1365,7 +1371,7 @@
       'record_loaded_date','vehicle_loaded_date','insurance_first_review_date','gps_first_review_date',
       'insurance_provider','insurance_policy_number','insurance_agency_phone','insurance_issue_date','insurance_expiration_date','insurance_customer_role','insurance_policyholder_name','insurance_policyholder_relationship','insurance_policyholder_address','insurance_driver_listed','insurance_driver_name_on_policy','insurance_driver_address','insurance_address_review_status','insurance_gps_address_match','insurance_address_follow_up_notes','insurance_address_matches','insurance_policy_address','insurance_party_schema_version','insurance_cancelled_since','insurance_status','insurance_verified_date','insurance_next_review_date','insurance_payments_current','insurance_comprehensive','insurance_collision','insurance_lienholder','insurance_status_reason','insurance_follow_up_path',
       'gps_imei','gps_provider','gps_device_status','gps_battery_connected','gps_last_mileage','gps_last_location','gps_location_jurisdiction','gps_last_seen_at','gps_overnight_location','gps_status_reason','gps_next_review_date','gps_monthly_miles','gps_monthly_miles_status',
-      'recovery_event_type','recovery_event_date','recovery_last_location','recovery_policy_active_on_event','recovery_repo_confirmed','recovery_damage_notes','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_claim_number','gap_opened_date','insurance_claim_last_call_date','gap_last_call_date','claim_pending_action','gap_missing_documents','ops_action_type','ops_contact_result','ops_next_action','insurance_gps_notes',
+      'recovery_event_type','recovery_event_date','recovery_last_location','recovery_policy_active_on_event','recovery_repo_confirmed','recovery_damage_notes','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_claim_number','gap_opened_date','insurance_claim_last_call_date','gap_last_call_date','claim_pending_action','gap_missing_documents','ops_action_type','ops_contact_result','ops_next_action','ops_next_action_date','ops_next_action_time','insurance_gps_notes',
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
       'conditional_delivery_date','conditional_deadline',
       'surrender_date','surrender_time','surrender_location','account_number','surrender_monthly_payment','surrender_paid_installments','surrender_owed_installments','surrender_amount_owed','surrender_payoff','surrender_days_sold','surrender_keys','surrender_title','surrender_registration','surrender_exterior','surrender_mechanical','surrender_personal_property','surrender_photo_notes',
@@ -1463,6 +1469,7 @@
       if ($('vehicle_loaded_date') && !$('vehicle_loaded_date').value) $('vehicle_loaded_date').value = todayInputValue();
       if ($('insurance_first_review_date') && !$('insurance_first_review_date').value) $('insurance_first_review_date').value = todayInputValue();
       if ($('gps_first_review_date') && !$('gps_first_review_date').value) $('gps_first_review_date').value = todayInputValue();
+      if ($('ops_next_action_time') && !$('ops_next_action_time').value) $('ops_next_action_time').value = '09:00';
       syncPickupStartDate();
     }
     function dateValue(id) {
@@ -1697,6 +1704,45 @@
       } else {
         window.prompt(label, text);
       }
+    }
+    function compactCalendarDate(dateValue, timeValue = '09:00') {
+      const date = String(dateValue || '').replace(/-/g, '');
+      const time = String(timeValue || '09:00').replace(':', '').padEnd(6, '0');
+      return date && /^\d{8}$/.test(date) ? `${date}T${time}` : '';
+    }
+    function googleCalendarUrl({ date, time, title, details }) {
+      const start = compactCalendarDate(date, time);
+      if (!start) return '';
+      const startDate = new Date(`${date}T${time || '09:00'}:00`);
+      const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
+      const end = `${endDate.getFullYear()}${String(endDate.getMonth() + 1).padStart(2, '0')}${String(endDate.getDate()).padStart(2, '0')}T${String(endDate.getHours()).padStart(2, '0')}${String(endDate.getMinutes()).padStart(2, '0')}00`;
+      const params = new URLSearchParams({
+        action: 'TEMPLATE',
+        text: title,
+        dates: `${start}/${end}`,
+        ctz: 'America/New_York',
+        details
+      });
+      return `https://calendar.google.com/calendar/render?${params.toString()}`;
+    }
+    function currentCalendarTaskUrl() {
+      const action = val('ops_next_action') || val('ops_action_type') || 'Seguimiento DOC EASYCAR';
+      const customer = fullName() || 'Cliente';
+      const car = [val('vehicle_year'), val('vehicle_make'), val('vehicle_model')].filter(Boolean).join(' ');
+      return googleCalendarUrl({
+        date: val('ops_next_action_date'),
+        time: val('ops_next_action_time') || '09:00',
+        title: `DOC EASYCAR - ${action} - ${customer}`,
+        details: [
+          `Cliente: ${customer}`,
+          car ? `Vehiculo: ${car}` : '',
+          val('vin') ? `VIN: ${val('vin')}` : '',
+          val('stock_number') ? `Stock: ${val('stock_number')}` : '',
+          `Accion: ${action}`,
+          val('insurance_gps_notes') ? `Notas: ${val('insurance_gps_notes')}` : '',
+          'Abrir DOC EASYCAR: https://docs.easycarus.com'
+        ].filter(Boolean).join('\n')
+      });
     }
     function updateOperationalDialogs() {
       updateGpsLocationAndMileage();
@@ -2572,6 +2618,11 @@
           setInsuranceGpsStatus('Hay una irregularidad de seguro o GPS. Define la proxima accion antes de registrar la revision.', 'warn');
           return;
         }
+        if (formData.ops_next_action && !formData.ops_next_action_date) {
+          $('ops_next_action_date')?.focus();
+          setInsuranceGpsStatus('La proxima accion necesita una fecha para aparecer en la agenda del operador.', 'warn');
+          return;
+        }
         const cloudResult = window.EasyCarCloud ? await window.EasyCarCloud.saveInsuranceGpsReview(formData) : null;
         if (!cloudResult) {
           setInsuranceGpsStatus('No se registro la verificacion en la auditoria central. Inicia sesion y guarda primero los datos del expediente.', 'warn');
@@ -2623,12 +2674,22 @@
     $('refreshDocs').addEventListener('click', renderDocs);
     $('decodeVin').addEventListener('click', decodeVin);
     $('copyInsuranceNotice')?.addEventListener('click', () => copyPreparedText(insuranceNoticeText(), 'Aviso de seguro'));
+    $('addCurrentTaskToGoogleCalendar')?.addEventListener('click', () => {
+      const url = currentCalendarTaskUrl();
+      if (!url) {
+        setInsuranceGpsStatus('Indica la fecha de la proxima accion antes de agregar el recordatorio.', 'warn');
+        $('ops_next_action_date')?.focus();
+        return;
+      }
+      window.open(url, '_blank', 'noopener,noreferrer');
+    });
     $('prepareInsuranceVerification')?.addEventListener('click', () => {
       $('ops_action_type').value = 'Verificacion seguro';
       $('ops_contact_result').value = '';
       $('insurance_verified_date').value = todayInputValue();
       $('insurance_status_reason').value = '';
       $('ops_next_action').value = '';
+      $('ops_next_action_date').value = '';
       $('insurance_gps_notes').value = '';
       syncInsuranceCoverage();
       updateInsuranceGpsSchedule();
@@ -2640,6 +2701,7 @@
       $('gps_first_review_date').value = todayInputValue();
       $('gps_status_reason').value = '';
       $('ops_next_action').value = '';
+      $('ops_next_action_date').value = '';
       $('insurance_gps_notes').value = '';
       updateInsuranceGpsSchedule();
       $('gps_device_status')?.focus();

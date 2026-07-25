@@ -623,7 +623,7 @@ const insuranceGpsFields = [
   'gap_claim_status', 'insurance_claim_number', 'gap_claim_number', 'gap_opened_date',
   'insurance_claim_last_call_date', 'gap_last_call_date', 'claim_pending_action', 'gap_missing_documents',
   'ops_action_type', 'ops_contact_result',
-  'ops_next_action', 'insurance_gps_notes'
+  'ops_next_action', 'ops_next_action_date', 'ops_next_action_time', 'insurance_gps_notes'
 ];
 
 function insuranceGpsPayload(formData) {
@@ -719,6 +719,9 @@ async function saveInsuranceGpsReview(formData) {
   if (((isInsuranceAction && insuranceIssue) || (isGpsAction && gpsIssue)) && !String(formData.ops_next_action || '').trim()) {
     throw new Error('Hay una irregularidad de seguro o GPS. Define la proxima accion del operador.');
   }
+  if (String(formData.ops_next_action || '').trim() && !formData.ops_next_action_date) {
+    throw new Error('La proxima accion requiere una fecha para la agenda del operador.');
+  }
   if (isInsuranceAction && insuranceIssue && !String(formData.insurance_status_reason || '').trim()) {
     throw new Error('Explica el motivo o resultado de la verificacion de poliza.');
   }
@@ -747,7 +750,8 @@ async function saveInsuranceGpsReview(formData) {
   const sale = await saveSale(formData);
   const payload = insuranceGpsPayload(formData);
   const status = formData.ops_contact_result || formData.insurance_status || formData.gps_device_status || formData.gap_claim_status || 'Registrado';
-  const followUpAt = repoConfirmed ? null : (isInsuranceAction ? formData.insurance_next_review_date : isGpsAction ? formData.gps_next_review_date : formData.insurance_next_review_date || formData.gps_next_review_date || null);
+  const followUpAt = repoConfirmed ? null : (formData.ops_next_action_date
+    || (isInsuranceAction ? formData.insurance_next_review_date : isGpsAction ? formData.gps_next_review_date : formData.insurance_next_review_date || formData.gps_next_review_date || null));
   const rows = [{
     sale_id: sale.id,
     module: 'insurance_gps',
@@ -1708,19 +1712,53 @@ function localDateKey(value) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function googleCalendarTaskUrl(task) {
+  const [year, month, day] = String(task.key || '').split('-').map(Number);
+  if (!year || !month || !day) return '';
+  const time = String(task.time || '09:00');
+  const [hour = 9, minute = 0] = time.split(':').map(Number);
+  const start = new Date(year, month - 1, day, hour, minute, 0);
+  const end = new Date(start.getTime() + 30 * 60 * 1000);
+  const compact = date => `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}00`;
+  const profile = task.profile;
+  const details = [
+    `Cliente: ${profile.sale.customer_name || 'Cliente'}`,
+    profile.sale.vehicle_description ? `Vehiculo: ${profile.sale.vehicle_description}` : '',
+    profile.sale.vin ? `VIN: ${profile.sale.vin}` : '',
+    profile.sale.stock_number ? `Stock: ${profile.sale.stock_number}` : '',
+    `Accion: ${task.label}`,
+    task.note ? `Notas: ${task.note}` : '',
+    'Abrir DOC EASYCAR: https://docs.easycarus.com'
+  ].filter(Boolean).join('\n');
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: `DOC EASYCAR - ${task.label} - ${profile.sale.customer_name || 'Cliente'}`,
+    dates: `${compact(start)}/${compact(end)}`,
+    ctz: 'America/New_York',
+    details
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 function calendarTasksForProfiles(profiles) {
   const tasks = [];
   profiles.forEach(profile => {
     if (profile.repoConfirmed) return;
-    const add = (date, label, priority = '') => {
+    const add = (date, label, priority = '', time = '09:00', note = '') => {
       const key = localDateKey(date);
-      if (key) tasks.push({ key, label, priority, profile });
+      if (key) tasks.push({ key, label, priority, profile, time, note });
     };
     add(profile.form.insurance_next_review_date, 'Verificar poliza', profile.policyProblem ? 'alert' : '');
     add(profile.form.gps_next_review_date, 'Verificar GPS', profile.gpsProblem ? 'alert' : '');
     profile.operations
       .filter(operation => operation.follow_up_at && !String(operation.event_type || '').startsWith('proxima_revision_'))
-      .forEach(operation => add(operation.follow_up_at, operation.event_type || 'Seguimiento', operation.status === 'Irregularidad' ? 'alert' : ''));
+      .forEach(operation => add(
+        operation.follow_up_at,
+        operation.payload?.ops_next_action || operation.event_type || 'Seguimiento',
+        operation.status === 'Irregularidad' ? 'alert' : '',
+        operation.payload?.ops_next_action_time || '09:00',
+        operation.note || ''
+      ));
   });
   return tasks.sort((a, b) => a.key.localeCompare(b.key) || a.label.localeCompare(b.label));
 }
@@ -1774,7 +1812,15 @@ function renderOpsCalendar(profiles) {
     open.className = 'secondary';
     open.textContent = 'Abrir';
     open.addEventListener('click', () => openOpsSale(task.profile));
-    row.append(date, detail, open);
+    const google = document.createElement('button');
+    google.type = 'button';
+    google.className = 'secondary';
+    google.textContent = 'Google Calendar';
+    google.addEventListener('click', () => {
+      const url = googleCalendarTaskUrl(task);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    });
+    row.append(date, detail, open, google);
     controls.opsCalendarAgenda.append(row);
   });
 }
