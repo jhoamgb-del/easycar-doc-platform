@@ -2287,7 +2287,7 @@
       status.textContent = 'Verificando si el VIN ya existe...';
       status.className = 'status';
       try {
-        const result = await window.EasyCarCloud.checkDuplicateVin(vin);
+        const result = await window.EasyCarCloud.checkDuplicateVin(vin, val('stock_number'));
         if (seq !== vinDuplicateSeq) return;
         if (!result.ready) {
           status.textContent = 'Entra al sistema para verificar duplicados de VIN en el expediente central.';
@@ -2296,9 +2296,15 @@
         }
         if (result.duplicate) {
           const detail = result.matches.slice(0, 2).map(formatDuplicateVinMatch).join(' / ');
-          status.textContent = `BANDERA ROJA: este VIN ya existe en el sistema. ${detail}`;
-          status.className = 'status bad';
-          $('vin')?.classList.add('field-error');
+          if (result.critical) {
+            status.textContent = `BANDERA ROJA - VIN DUPLICADO: existe otra venta con el mismo stock o falta confirmar un stock diferente. ${detail}`;
+            status.className = 'status bad';
+            $('vin')?.classList.add('field-error');
+          } else {
+            status.textContent = `VIN DUPLICADO - VENTA HISTORICA: permitido porque los stocks son diferentes. Verifica el ciclo anterior. ${detail}`;
+            status.className = 'status warn';
+            $('vin')?.classList.remove('field-error');
+          }
           return;
         }
         status.textContent = 'VIN sin duplicado visible en el expediente central.';
@@ -2668,6 +2674,7 @@
       window.EasyCarCloud?.scheduleAutoSave?.(collectFormData());
     }));
     $('vin').addEventListener('input', scheduleVinDecode);
+    $('stock_number').addEventListener('input', scheduleVinDuplicateCheck);
     $('address').addEventListener('input', scheduleAddressDetect);
     $('address').addEventListener('paste', () => setTimeout(detectAddress, 200));
     $('detectAddress').addEventListener('click', detectAddress);

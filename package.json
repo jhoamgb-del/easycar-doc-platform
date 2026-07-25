@@ -10,7 +10,7 @@
     "check": "node --check api/signature/create.js && node --check api/signature/webhook.js && node --check api/admin/users.js && node --check api/admin/cleanup-orphaned-files.js && node --check api/messages/insurance-sms.js && node --check src/cloud.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.108.2",
-    "vite": "^7.2.6"
+    "@supabase/supabase-js": "^2.110.8",
+    "vite": "^7.3.6"
   }
 }

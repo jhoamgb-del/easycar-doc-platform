@@ -237,6 +237,9 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
     })
     .select('id')
     .single();
+  if (requestError?.code === '23505') {
+    throw new Error('Esta venta ya tiene una solicitud de firma activa. Revisa el expediente central antes de reenviar.');
+  }
   if (requestError) throw requestError;
 
   const customerSubmitter = {
@@ -321,10 +324,23 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
       throw new Error('DocuSeal created the signature request, but SMS was not enabled by DocuSeal. Check that the EasyCar DocuSeal Pro account has SMS invitations enabled.');
     }
   } catch (error) {
+    const requestChanges = submissionId
+      ? {
+          provider_submission_id: submissionId,
+          provider_submitter_id: submitterId,
+          status: 'sent'
+        }
+      : { status: 'failed' };
     await supabase
       .from('doc_signing_requests')
-      .update({ status: 'failed' })
+      .update(requestChanges)
       .eq('id', requestRecord.id);
+    if (submissionId) {
+      await supabase
+        .from('doc_sales')
+        .update({ status: 'sent', signature_method: 'digital' })
+        .eq('id', sale.id);
+    }
     throw error;
   }
 

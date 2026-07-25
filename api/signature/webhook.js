@@ -48,6 +48,7 @@ function submissionId(data) {
 function mapStatus(name) {
   if (name.includes('completed')) return 'completed';
   if (name.includes('declined')) return 'declined';
+  if (name.includes('expired')) return 'expired';
   if (name.includes('viewed') || name.includes('started')) return 'opened';
   return null;
 }
@@ -166,8 +167,11 @@ export default async function handler(req, res) {
       provider_event_id: eventId,
       payload: payloadSummary(payload, data, type, providerSubmissionId, externalId)
     });
-    if (eventError?.code === '23505') return json(res, 200, { ok: true, duplicate: true });
-    if (eventError) throw eventError;
+    const duplicateEvent = eventError?.code === '23505';
+    if (duplicateEvent && mapStatus(type) !== 'completed') {
+      return json(res, 200, { ok: true, duplicate: true });
+    }
+    if (eventError && !duplicateEvent) throw eventError;
 
     const status = mapStatus(type);
     if (requestRecord && status) {
@@ -184,6 +188,9 @@ export default async function handler(req, res) {
     if (saleId && status === 'declined') {
       await supabase.from('doc_sales').update({ status: 'declined' }).eq('id', saleId);
     }
+    if (saleId && status === 'expired') {
+      await supabase.from('doc_sales').update({ status: 'expired' }).eq('id', saleId);
+    }
     if (saleId && status === 'completed' && requestRecord) {
       if (!(await signedDocumentsArchived(supabase, saleId, requestRecord.id))) {
         await archiveSignedDocuments(supabase, saleId, requestRecord.id, requestRecord.provider_submission_id);
@@ -192,7 +199,7 @@ export default async function handler(req, res) {
       if (saleError) throw saleError;
     }
 
-    return json(res, 200, { ok: true });
+    return json(res, 200, { ok: true, resumed: duplicateEvent || undefined });
   } catch (error) {
     return json(res, 500, { error: error.message || 'Webhook processing failed' });
   }

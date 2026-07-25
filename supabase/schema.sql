@@ -43,7 +43,7 @@ create table if not exists public.doc_sales (
   contract_number text,
   transaction_date date,
   status text not null default 'draft' check (
-    status in ('draft', 'ready', 'sent', 'viewed', 'signed_digital', 'signed_physical', 'declined', 'void')
+    status in ('draft', 'ready', 'sent', 'viewed', 'signed_digital', 'signed_physical', 'declined', 'expired', 'void')
   ),
   signature_method text check (signature_method in ('digital', 'physical')),
   form_data jsonb not null default '{}'::jsonb,
@@ -131,6 +131,9 @@ create index if not exists idx_doc_sales_created_at on public.doc_sales(created_
 create index if not exists idx_doc_sales_vin on public.doc_sales(vin);
 create index if not exists idx_doc_sale_documents_sale_id on public.doc_sale_documents(sale_id);
 create index if not exists idx_doc_signing_requests_sale_id on public.doc_signing_requests(sale_id);
+create unique index if not exists uq_doc_signing_requests_active_sale
+on public.doc_signing_requests(sale_id)
+where status in ('created', 'sent', 'opened', 'completed');
 create index if not exists idx_doc_sale_operations_sale_id on public.doc_sale_operations(sale_id);
 create index if not exists idx_doc_sale_operations_module on public.doc_sale_operations(module);
 create index if not exists idx_doc_sale_operations_created_at on public.doc_sale_operations(created_at desc);
@@ -167,7 +170,7 @@ for each row execute function public.doc_set_updated_at();
 create or replace function public.doc_handle_new_user()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 begin
@@ -273,6 +276,151 @@ $$;
 drop trigger if exists doc_sales_sync_customer on public.doc_sales;
 create trigger doc_sales_sync_customer before insert or update on public.doc_sales
 for each row execute function public.doc_sync_customer_from_sale();
+
+create or replace function public.doc_enforce_vin_stock_history()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  normalized_vin text := upper(regexp_replace(coalesce(new.vin, ''), '[^A-Za-z0-9]+', '', 'g'));
+  normalized_stock text := upper(btrim(coalesce(new.stock_number, '')));
+begin
+  if normalized_vin = '' then
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE'
+    and new.vin is not distinct from old.vin
+    and new.stock_number is not distinct from old.stock_number then
+    return new;
+  end if;
+
+  if exists (
+    select 1
+    from public.doc_sales existing
+    where existing.id <> new.id
+      and upper(regexp_replace(coalesce(existing.vin, ''), '[^A-Za-z0-9]+', '', 'g')) = normalized_vin
+      and (
+        normalized_stock = ''
+        or btrim(coalesce(existing.stock_number, '')) = ''
+        or upper(btrim(existing.stock_number)) = normalized_stock
+      )
+  ) then
+    raise exception using
+      errcode = '23505',
+      message = 'VIN duplicado: para registrar otra venta el stock debe existir y ser diferente al ciclo anterior.';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.doc_enforce_vin_stock_history() from public, anon, authenticated;
+
+drop trigger if exists doc_sales_enforce_vin_stock_history on public.doc_sales;
+create trigger doc_sales_enforce_vin_stock_history
+before insert or update of vin, stock_number on public.doc_sales
+for each row execute function public.doc_enforce_vin_stock_history();
+
+create or replace function public.doc_save_insurance_gps_event(
+  target_sale_id uuid,
+  sale_patch jsonb,
+  operation_rows jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  caller_id uuid := auth.uid();
+  operation jsonb;
+  first_operation_id uuid;
+  inserted_operation_id uuid;
+begin
+  if caller_id is null then
+    raise exception 'Authentication required';
+  end if;
+
+  if not exists (
+    select 1
+    from public.doc_user_profiles profile
+    where profile.id = caller_id
+      and profile.active
+  ) then
+    raise exception 'Active DOC EASYCAR user required';
+  end if;
+
+  if not exists (
+    select 1
+    from public.doc_sales sale
+    where sale.id = target_sale_id
+      and (
+        sale.created_by = caller_id
+        or exists (
+          select 1
+          from public.doc_user_profiles profile
+          where profile.id = caller_id
+            and profile.active
+            and profile.role in ('admin', 'manager')
+        )
+      )
+  ) then
+    raise exception 'Sale not found or access denied';
+  end if;
+
+  if jsonb_typeof(coalesce(operation_rows, '[]'::jsonb)) <> 'array'
+    or jsonb_array_length(coalesce(operation_rows, '[]'::jsonb)) = 0 then
+    raise exception 'At least one audit operation is required';
+  end if;
+
+  update public.doc_sales
+  set customer_name = coalesce(sale_patch ->> 'customer_name', ''),
+      customer_email = nullif(sale_patch ->> 'customer_email', ''),
+      customer_phone = nullif(sale_patch ->> 'customer_phone', ''),
+      vehicle_description = nullif(sale_patch ->> 'vehicle_description', ''),
+      vin = nullif(sale_patch ->> 'vin', ''),
+      stock_number = nullif(sale_patch ->> 'stock_number', ''),
+      contract_number = nullif(sale_patch ->> 'contract_number', ''),
+      transaction_date = nullif(sale_patch ->> 'transaction_date', '')::date,
+      form_data = coalesce(sale_patch -> 'form_data', '{}'::jsonb)
+  where id = target_sale_id;
+
+  for operation in
+    select value from jsonb_array_elements(operation_rows)
+  loop
+    insert into public.doc_sale_operations (
+      sale_id,
+      module,
+      event_type,
+      status,
+      follow_up_at,
+      note,
+      payload,
+      created_by
+    ) values (
+      target_sale_id,
+      coalesce(nullif(operation ->> 'module', ''), 'insurance_gps'),
+      coalesce(nullif(operation ->> 'event_type', ''), 'revision_realizada'),
+      nullif(operation ->> 'status', ''),
+      nullif(operation ->> 'follow_up_at', '')::date,
+      nullif(operation ->> 'note', ''),
+      coalesce(operation -> 'payload', '{}'::jsonb),
+      caller_id
+    )
+    returning id into inserted_operation_id;
+
+    first_operation_id := coalesce(first_operation_id, inserted_operation_id);
+  end loop;
+
+  return first_operation_id;
+end;
+$$;
+
+revoke all on function public.doc_save_insurance_gps_event(uuid, jsonb, jsonb) from public, anon;
+grant execute on function public.doc_save_insurance_gps_event(uuid, jsonb, jsonb) to authenticated;
 
 create or replace function public.doc_can_manage_all_sales()
 returns boolean

@@ -82,7 +82,9 @@ let opsFilter = 'all';
 let opsProfilesCache = [];
 let opsLoadedAt = null;
 let autosaveTimer = null;
+let autosaveGeneration = 0;
 let saleInsertPromise = null;
+let saleUpdatePromise = Promise.resolve();
 let realtimeChannel = null;
 let realtimeRefreshTimer = null;
 let currentProfileRole = '';
@@ -94,7 +96,12 @@ function setCloudStatus(message, tone = '') {
 }
 
 function setCurrentSale(id, status = 'draft') {
-  currentSaleId = id || null;
+  const nextSaleId = id || null;
+  if (currentSaleId !== nextSaleId) {
+    clearTimeout(autosaveTimer);
+    autosaveGeneration += 1;
+  }
+  currentSaleId = nextSaleId;
   controls.badge.textContent = id ? `Guardada en Supabase: ${id.slice(0, 8)} - ${statusLabel(status)}` : 'Venta nueva sin guardar';
 }
 
@@ -336,13 +343,16 @@ async function saveSale(formData, { quiet = false } = {}) {
   const record = saleRecord(formData);
   let result;
   if (currentSaleId) {
+    const targetSaleId = currentSaleId;
     const { created_by, status, ...updateRecord } = record;
-    result = await supabase
+    const update = () => supabase
       .from('doc_sales')
       .update(updateRecord)
-      .eq('id', currentSaleId)
+      .eq('id', targetSaleId)
       .select('id, status')
       .single();
+    saleUpdatePromise = saleUpdatePromise.catch(() => null).then(update);
+    result = await saleUpdatePromise;
   } else {
     // A second autosave can fire while the first insert is still in flight.
     // Wait for that insert, then update the same sale instead of creating a duplicate.
@@ -372,12 +382,39 @@ async function saveSale(formData, { quiet = false } = {}) {
   return data;
 }
 
+async function saveInsuranceGpsEventAtomically(formData, rows) {
+  formData = withNormalizedPhones(formData);
+  clearTimeout(autosaveTimer);
+  autosaveGeneration += 1;
+  await saleUpdatePromise.catch(() => null);
+
+  let sale = currentSaleId ? { id: currentSaleId } : null;
+  if (!sale) {
+    sale = await saveSale(formData, { quiet: true });
+  }
+
+  const record = saleRecord(formData);
+  const { created_by, status, ...salePatch } = record;
+  const { data, error } = await supabase.rpc('doc_save_insurance_gps_event', {
+    target_sale_id: sale.id,
+    sale_patch: salePatch,
+    operation_rows: rows
+  });
+  if (error) throw error;
+
+  setCurrentSale(sale.id);
+  return { sale, operationId: data };
+}
+
 function scheduleAutoSave(formData) {
   if (!supabase || !session?.user) return;
   const hasIdentity = [formData.vin, formData.first_name, formData.last_name, formData.customer_email, formData.phone].some(value => String(value || '').trim());
   if (!hasIdentity) return;
+  const targetSaleId = currentSaleId;
+  const targetGeneration = autosaveGeneration;
   clearTimeout(autosaveTimer);
   autosaveTimer = window.setTimeout(() => {
+    if (targetGeneration !== autosaveGeneration || targetSaleId !== currentSaleId) return;
     saveSale(formData, { quiet: true })
       .then(() => app.setSaveStatus?.('Cambios guardados automaticamente en el expediente central.', 'good'))
       .catch(error => app.setSaveStatus?.(`No se pudo guardar automaticamente: ${error.message}`, 'warn'));
@@ -556,26 +593,49 @@ async function importSalesFromCsv(file) {
   if (!imported.length) throw new Error('No encontre filas con cliente o VIN para cargar.');
 
   const vins = [...new Set(imported.map(row => row.vin).filter(Boolean))];
-  const existingVins = new Set();
+  const stocksByVin = new Map();
   if (vins.length) {
-    const { data, error } = await supabase.from('doc_sales').select('vin').in('vin', vins);
+    const { data, error } = await supabase.from('doc_sales').select('vin, stock_number').in('vin', vins);
     if (error) throw error;
     (data || []).forEach(item => {
-      if (item.vin) existingVins.add(cleanVin(item.vin));
+      const vin = cleanVin(item.vin);
+      if (!vin) return;
+      if (!stocksByVin.has(vin)) stocksByVin.set(vin, new Set());
+      stocksByVin.get(vin).add(String(item.stock_number || '').trim().toUpperCase());
     });
   }
 
-  const records = imported
-    .filter(formData => !formData.vin || !existingVins.has(formData.vin))
-    .map(formData => saleRecord(formData));
-  if (!records.length) return { inserted: 0, skipped: imported.length };
+  const accepted = [];
+  let skipped = 0;
+  let historicalVinWarnings = 0;
+  imported.forEach(formData => {
+    const vin = cleanVin(formData.vin);
+    if (!vin) {
+      accepted.push(formData);
+      return;
+    }
+    const stock = String(formData.stock_number || '').trim().toUpperCase();
+    const priorStocks = stocksByVin.get(vin) || new Set();
+    const unverifiable = priorStocks.size > 0 && (!stock || priorStocks.has(''));
+    const exactDuplicate = stock && priorStocks.has(stock);
+    if (unverifiable || exactDuplicate) {
+      skipped += 1;
+      return;
+    }
+    if (priorStocks.size > 0) historicalVinWarnings += 1;
+    accepted.push(formData);
+    if (!stocksByVin.has(vin)) stocksByVin.set(vin, new Set());
+    stocksByVin.get(vin).add(stock);
+  });
+  const records = accepted.map(formData => saleRecord(formData));
+  if (!records.length) return { inserted: 0, skipped, historicalVinWarnings };
 
   const { error } = await supabase.from('doc_sales').insert(records);
   if (error) throw error;
   await loadRecentSales();
   await loadArchive();
   await loadOpsReport();
-  return { inserted: records.length, skipped: imported.length - records.length };
+  return { inserted: records.length, skipped, historicalVinWarnings };
 }
 
 function downloadImportTemplate() {
@@ -747,13 +807,11 @@ async function saveInsuranceGpsReview(formData) {
       throw new Error('Para reposicion registra fecha, ultima ubicacion, poliza activa ese dia y confirmacion del carro en dealer.');
     }
   }
-  const sale = await saveSale(formData);
   const payload = insuranceGpsPayload(formData);
   const status = formData.ops_contact_result || formData.insurance_status || formData.gps_device_status || formData.gap_claim_status || 'Registrado';
   const followUpAt = repoConfirmed ? null : (formData.ops_next_action_date
     || (isInsuranceAction ? formData.insurance_next_review_date : isGpsAction ? formData.gps_next_review_date : formData.insurance_next_review_date || formData.gps_next_review_date || null));
   const rows = [{
-    sale_id: sale.id,
     module: 'insurance_gps',
     event_type: repoConfirmed ? 'Reposicion confirmada' : formData.ops_action_type || formData.recovery_event_type || 'revision_realizada',
     status,
@@ -766,7 +824,6 @@ async function saveInsuranceGpsReview(formData) {
   // is read from the sale record, so replacing it never requires deleting history.
   if (!repoConfirmed && formData.insurance_next_review_date) {
     rows.push({
-      sale_id: sale.id,
       module: 'insurance_gps',
       event_type: 'proxima_revision_seguro',
       status: 'Pendiente',
@@ -778,7 +835,6 @@ async function saveInsuranceGpsReview(formData) {
   }
   if (!repoConfirmed && formData.gps_next_review_date) {
     rows.push({
-      sale_id: sale.id,
       module: 'insurance_gps',
       event_type: 'proxima_revision_gps',
       status: 'Pendiente',
@@ -788,16 +844,11 @@ async function saveInsuranceGpsReview(formData) {
       created_by: session.user.id
     });
   }
-  const { data, error } = await supabase
-    .from('doc_sale_operations')
-    .insert(rows)
-    .select('id, created_at')
-    .limit(1);
-  if (error) throw error;
+  const { sale, operationId } = await saveInsuranceGpsEventAtomically(formData, rows);
   await loadSaleOperationHistory(sale.id);
   await loadArchive();
   await loadOpsReport();
-  return data?.[0] || null;
+  return operationId ? { id: operationId } : null;
 }
 
 async function saveInsuranceGpsIdentification(formData) {
@@ -822,14 +873,10 @@ async function saveInsuranceGpsIdentification(formData) {
   if (['Cancelado', 'Vencido'].includes(formData.insurance_status) && !formData.insurance_follow_up_path) {
     throw new Error('Selecciona la ruta de seguimiento para la poliza cancelada o vencida.');
   }
-  const sale = await saveSale(formData);
   const payload = insuranceGpsPayload(formData);
   const status = [formData.insurance_status, formData.gps_device_status].filter(Boolean).join(' / ') || 'Pendiente de verificacion';
   const note = 'Identificacion o actualizacion inicial de seguro/GPS guardada en el expediente.';
-  const { error } = await supabase
-    .from('doc_sale_operations')
-    .insert({
-      sale_id: sale.id,
+  const rows = [{
       module: 'insurance_gps',
       event_type: 'Identificacion / actualizacion GPS y seguro',
       status,
@@ -837,8 +884,8 @@ async function saveInsuranceGpsIdentification(formData) {
       note,
       payload,
       created_by: session.user.id
-    });
-  if (error) throw error;
+  }];
+  const { sale } = await saveInsuranceGpsEventAtomically(formData, rows);
   await loadSaleOperationHistory(sale.id);
   await loadArchive();
   await loadOpsReport();
@@ -909,7 +956,7 @@ function statusLabel(status) {
   const labels = {
     draft: 'Borrador', ready: 'Lista', sent: 'Enviada', viewed: 'Vista',
     signed_digital: 'Firmada digital', signed_physical: 'Firmada fisica',
-    declined: 'Rechazada', void: 'Anulada'
+    declined: 'Rechazada', expired: 'Expirada', void: 'Anulada'
   };
   return labels[status] || status;
 }
@@ -1084,10 +1131,10 @@ async function loadArchive() {
   setCloudStatus(`${sales.length} expediente(s) visibles en el archivo central.`, 'good');
 }
 
-async function checkDuplicateVin(vin) {
-  if (!supabase || !session?.user) return { ready: false, duplicate: false, matches: [] };
+async function checkDuplicateVin(vin, stockNumber = '') {
+  if (!supabase || !session?.user) return { ready: false, duplicate: false, critical: false, matches: [] };
   const clean = cleanVin(vin);
-  if (clean.length !== 17) return { ready: true, duplicate: false, matches: [] };
+  if (clean.length !== 17) return { ready: true, duplicate: false, critical: false, matches: [] };
   const { data, error } = await supabase
     .from('doc_sales')
     .select('id, customer_name, vehicle_description, stock_number, contract_number, transaction_date, status')
@@ -1096,7 +1143,12 @@ async function checkDuplicateVin(vin) {
     .limit(6);
   if (error) throw error;
   const matches = (data || []).filter(sale => sale.id !== currentSaleId);
-  return { ready: true, duplicate: matches.length > 0, matches };
+  const currentStock = String(stockNumber || '').trim().toUpperCase();
+  const critical = matches.some(sale => {
+    const priorStock = String(sale.stock_number || '').trim().toUpperCase();
+    return !currentStock || !priorStock || priorStock === currentStock;
+  });
+  return { ready: true, duplicate: matches.length > 0, critical, matches };
 }
 
 function csvCell(value) {
@@ -1245,7 +1297,7 @@ function latestOperation(operations = []) {
 }
 
 function latestOperatorOperation(operations = []) {
-  return latestOperation(operations.filter(operation => !String(operation.event_type || '').startsWith('proxima_revision_')));
+  return latestOperation(operations.filter(isOperatorAction));
 }
 
 function buildOpsProfile(sale, operations = []) {
@@ -1553,7 +1605,10 @@ function renderOpsMetric(label, value, filter = '', detail = '') {
 }
 
 function isOperatorAction(operation) {
-  return operation && !String(operation.event_type || '').startsWith('proxima_revision_');
+  const eventType = String(operation?.event_type || '');
+  return Boolean(operation)
+    && !eventType.startsWith('proxima_revision_')
+    && !/^Identificacion \/ actualizacion GPS y seguro$/i.test(eventType);
 }
 
 function startOfLocalDay(daysAgo = 0) {
@@ -2174,7 +2229,7 @@ async function runBulkImport() {
   controls.importStatus.className = 'status';
   try {
     const result = await importSalesFromCsv(controls.importFile.files?.[0]);
-    controls.importStatus.textContent = `Carga completada: ${result.inserted} expedientes creados, ${result.skipped} filas omitidas por duplicado o vacias.`;
+    controls.importStatus.textContent = `Carga completada: ${result.inserted} expedientes creados, ${result.skipped} filas omitidas por VIN + stock duplicado o stock sin confirmar, ${result.historicalVinWarnings || 0} VIN historicos permitidos con stock diferente.`;
     controls.importStatus.className = 'status good';
     setCloudStatus('Carga masiva completada. Los clientes ya aparecen en archivo central y GPS Y SEGURO.', 'good');
     controls.importFile.value = '';
