@@ -244,6 +244,7 @@ function validateForSignature(formData) {
     ['customer_email', 'Email del cliente'],
     ['phone', 'Telefono para codigo SMS'],
     ['driver_license', 'Licencia, pasaporte o ID'],
+    ['customer_birth_date', 'Fecha de nacimiento del cliente'],
     ['vin', 'VIN'],
     ['vehicle_year', 'Año del vehiculo'],
     ['vehicle_make', 'Marca del vehiculo'],
@@ -290,6 +291,10 @@ function validateForSignature(formData) {
     missing.push('Email valido del cliente');
     invalidIds.add('customer_email');
   }
+  if (formData.customer_birth_date && !validBirthDate(formData.customer_birth_date)) {
+    missing.push('Fecha de nacimiento valida y no futura');
+    invalidIds.add('customer_birth_date');
+  }
   if (!normalizedPhone(formData) || !hasCountryCode(formData.phone)) {
     missing.push('Telefono con codigo de pais, por ejemplo +1 305 555 1212');
     invalidIds.add('phone');
@@ -310,6 +315,19 @@ function validateForSignature(formData) {
   }
   required.forEach(([id]) => markField(id, invalidIds.has(id)));
   return [...new Set(missing)];
+}
+
+function validBirthDate(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day || year < 1900) return false;
+  const today = new Date();
+  const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  return parsed.getTime() <= todayUtc;
 }
 
 async function saveSale(formData, { quiet = false } = {}) {
@@ -586,7 +604,11 @@ function downloadImportTemplate() {
 const insuranceGpsFields = [
   'record_loaded_date', 'vehicle_loaded_date', 'insurance_first_review_date', 'gps_first_review_date',
   'insurance_provider', 'insurance_policy_number', 'insurance_agency_phone',
-  'insurance_issue_date', 'insurance_address_matches', 'insurance_policy_address', 'insurance_cancelled_since',
+  'insurance_issue_date', 'insurance_customer_role', 'insurance_policyholder_name',
+  'insurance_policyholder_relationship', 'insurance_policyholder_address',
+  'insurance_driver_listed', 'insurance_driver_name_on_policy', 'insurance_driver_address',
+  'insurance_address_review_status', 'insurance_gps_address_match', 'insurance_address_follow_up_notes',
+  'insurance_address_matches', 'insurance_policy_address', 'insurance_party_schema_version', 'insurance_cancelled_since',
   'insurance_status', 'insurance_verified_date', 'insurance_next_review_date',
   'insurance_expiration_date', 'insurance_payments_current',
   'insurance_comprehensive', 'insurance_collision', 'insurance_lienholder', 'insurance_status_reason', 'insurance_follow_up_path',
@@ -621,9 +643,56 @@ function insuranceGpsPayload(formData) {
   });
 }
 
+function policyPartyIssue(formData = {}) {
+  if (!formData.insurance_policy_number) return false;
+  if (String(formData.insurance_party_schema_version || '') !== '2') return false;
+  const driverUnconfirmed = formData.insurance_customer_role === 'Conductor agregado'
+    && formData.insurance_driver_listed !== 'Si';
+  return !formData.insurance_customer_role
+    || !String(formData.insurance_policyholder_name || '').trim()
+    || !String(formData.insurance_policyholder_address || '').trim()
+    || (formData.insurance_customer_role === 'Conductor agregado'
+      && (!String(formData.insurance_driver_name_on_policy || '').trim()
+        || !String(formData.insurance_driver_address || '').trim()))
+    || driverUnconfirmed
+    || !['Coinciden', 'Diferencia explicada'].includes(formData.insurance_address_review_status)
+    || formData.insurance_gps_address_match === 'No coincide';
+}
+
+function validatePolicyParties(formData = {}) {
+  if (!formData.insurance_policy_number) return;
+  if (!formData.insurance_customer_role) {
+    throw new Error('Indica si el cliente es titular de la poliza o conductor agregado.');
+  }
+  if (!String(formData.insurance_policyholder_name || '').trim() || !String(formData.insurance_policyholder_address || '').trim()) {
+    throw new Error('Registra el nombre y la direccion del titular de la poliza.');
+  }
+  if (formData.insurance_customer_role === 'Conductor agregado') {
+    if (!formData.insurance_driver_listed) {
+      throw new Error('Indica si el cliente aparece expresamente como conductor autorizado en la poliza.');
+    }
+    if (formData.insurance_driver_listed === 'Si' && !String(formData.insurance_driver_name_on_policy || '').trim()) {
+      throw new Error('Registra el nombre exacto del cliente conductor que aparece en la poliza.');
+    }
+    if (!String(formData.insurance_driver_address || '').trim()) {
+      throw new Error('Registra el nombre exacto y la direccion del cliente conductor que aparecen en la poliza.');
+    }
+  }
+  if (!formData.insurance_address_review_status) {
+    throw new Error('Registra el resultado de la comparacion de direcciones.');
+  }
+  if ((formData.insurance_customer_role === 'Conductor agregado' && formData.insurance_driver_listed !== 'Si')
+      || ['Pendiente de verificar', 'Inconsistencia critica'].includes(formData.insurance_address_review_status)
+      || formData.insurance_gps_address_match === 'No coincide') {
+    if (!String(formData.insurance_address_follow_up_notes || '').trim()) {
+      throw new Error('La diferencia de direcciones requiere una nota de seguimiento y comprobacion.');
+    }
+  }
+}
+
 async function saveInsuranceGpsReview(formData) {
   if (!supabase || !session?.user) return null;
-  if (!formData.customer_birth_date) throw new Error('Registra la fecha de nacimiento del cliente antes de verificar Seguro y GPS.');
+  if (!validBirthDate(formData.customer_birth_date)) throw new Error('Registra una fecha de nacimiento valida antes de verificar Seguro y GPS.');
   if (!formData.ops_action_type) throw new Error('Selecciona la accion del operador antes de registrar.');
   if (!formData.ops_contact_result) throw new Error('Selecciona el resultado de la accion antes de registrar.');
   if (String(formData.insurance_gps_notes || '').trim().length < 12) {
@@ -644,6 +713,7 @@ async function saveInsuranceGpsReview(formData) {
     || formData.insurance_comprehensive !== 'Si'
     || formData.insurance_collision !== 'Si'
     || formData.insurance_lienholder !== 'Si'
+    || policyPartyIssue(formData)
     || formData.insurance_address_matches !== 'Si'
     || isPastDue(formData.insurance_expiration_date);
   if (((isInsuranceAction && insuranceIssue) || (isGpsAction && gpsIssue)) && !String(formData.ops_next_action || '').trim()) {
@@ -664,6 +734,7 @@ async function saveInsuranceGpsReview(formData) {
   if (formData.insurance_address_matches === 'No' && !String(formData.insurance_policy_address || '').trim()) {
     throw new Error('La direccion no coincide. Registra la direccion que aparece en la poliza.');
   }
+  if (isInsuranceAction) validatePolicyParties(formData);
   if (formData.insurance_follow_up_path === 'Proceso de reposicion' && !formData.recovery_last_location) {
     throw new Error('En proceso de reposicion verifica el GPS y registra la ultima ubicacion del carro.');
   }
@@ -727,15 +798,10 @@ async function saveInsuranceGpsReview(formData) {
 
 async function saveInsuranceGpsIdentification(formData) {
   if (!supabase || !session?.user) return null;
-  if (!formData.customer_birth_date) {
-    throw new Error('Registra la fecha de nacimiento del cliente antes de guardar Seguro y GPS.');
+  if (!validBirthDate(formData.customer_birth_date)) {
+    throw new Error('Registra una fecha de nacimiento valida antes de guardar Seguro y GPS.');
   }
-  if (formData.insurance_policy_number && !formData.insurance_address_matches) {
-    throw new Error('Confirma si la direccion de la poliza coincide con la direccion del titular en el contrato.');
-  }
-  if (formData.insurance_address_matches === 'No' && !String(formData.insurance_policy_address || '').trim()) {
-    throw new Error('La direccion no coincide. Registra la direccion que aparece en la poliza.');
-  }
+  validatePolicyParties(formData);
   formData.insurance_status = normalizedInsuranceStatus(formData);
   if (formData.insurance_status === 'Activo OK') {
     formData.insurance_payments_current = 'Si';
@@ -1153,6 +1219,7 @@ function normalizedInsuranceStatus(form = {}) {
     && form.insurance_comprehensive === 'Si'
     && form.insurance_collision === 'Si'
     && form.insurance_lienholder === 'Si'
+    && !policyPartyIssue(form)
     && form.insurance_address_matches === 'Si'
     && !isPastDue(form.insurance_expiration_date);
   return legacyPolicyComplete ? 'Activo OK' : 'Activo pending';
@@ -1181,8 +1248,14 @@ function buildOpsProfile(sale, operations = []) {
   const form = { ...(sale.form_data || {}) };
   form.insurance_status = normalizedInsuranceStatus(form);
   const latest = latestOperatorOperation(operations);
-  const lastInsuranceReviewSource = form.insurance_verified_date || form.insurance_first_review_date || form.vehicle_loaded_date || sale.transaction_date || sale.created_at;
-  const lastGpsReviewSource = form.gps_last_seen_at || form.gps_first_review_date || form.vehicle_loaded_date || sale.transaction_date || sale.created_at;
+  const latestInsuranceReview = latestOperation(operations.filter(operation =>
+    !String(operation.event_type || '').startsWith('proxima_revision_')
+    && /verificacion seguro|llamada seguro/i.test(`${operation.event_type || ''} ${operation.payload?.ops_action_type || ''}`)));
+  const latestGpsReview = latestOperation(operations.filter(operation =>
+    !String(operation.event_type || '').startsWith('proxima_revision_')
+    && /verificacion gps|revision gps/i.test(`${operation.event_type || ''} ${operation.payload?.ops_action_type || ''}`)));
+  const lastInsuranceReviewSource = latestInsuranceReview?.created_at || form.insurance_verified_date || form.insurance_first_review_date || form.vehicle_loaded_date || sale.transaction_date || sale.created_at;
+  const lastGpsReviewSource = latestGpsReview?.created_at || form.gps_first_review_date || form.vehicle_loaded_date || sale.transaction_date || sale.created_at;
   const insuranceDaysSince = daysBetween(lastInsuranceReviewSource);
   const gpsDaysSince = daysBetween(lastGpsReviewSource);
   const insuranceOverdue = insuranceDaysSince === null || insuranceDaysSince > 14 || isPastDue(form.insurance_next_review_date);
@@ -1201,6 +1274,7 @@ function buildOpsProfile(sale, operations = []) {
     || form.insurance_collision !== 'Si'
     || form.insurance_lienholder !== 'Si'
     || form.insurance_payments_current !== 'Si'
+    || policyPartyIssue(form)
     || form.insurance_address_matches !== 'Si'
     || isPastDue(form.insurance_expiration_date)
     || insuranceOverdue;
@@ -1251,9 +1325,15 @@ function buildOpsProfile(sale, operations = []) {
     || (gapOpen && (gapClaimDays === null || gapClaimDays >= 7))
     || (insuranceClaimOpen && (insuranceClaimDays === null || insuranceClaimDays >= 7)));
   const alerts = [];
+  const partyClassificationPending = Boolean(form.insurance_policy_number)
+    && String(form.insurance_party_schema_version || '') !== '2';
   if (!form.customer_birth_date) alerts.push('Fecha de nacimiento pendiente');
   if (!form.insurance_policy_number) alerts.push('Seguro por configurar');
   else if (policyProblem) alerts.push(insuranceOverdue ? `Seguro sin revisar ${daysText(insuranceDaysSince)}` : 'Seguro requiere accion');
+  if (partyClassificationPending) alerts.push('Clasificacion titular/conductor pendiente');
+  if (form.insurance_customer_role === 'Conductor agregado' && form.insurance_driver_listed !== 'Si') alerts.push('Cliente no confirmado como conductor');
+  if (['Pendiente de verificar', 'Inconsistencia critica'].includes(form.insurance_address_review_status)) alerts.push('Direcciones pendientes de verificar');
+  if (form.insurance_gps_address_match === 'No coincide') alerts.push('GPS no coincide con direcciones declaradas');
   if (insuranceCancelled || insuranceInvalidated) alerts.push(`Poliza ${String(form.insurance_status).toLowerCase()} ${daysText(insuranceCancelledDays)}`);
   if (gpsMissing) alerts.push('GPS por configurar');
   if (gpsOutsideFlorida) alerts.push('Vehiculo fuera de Florida');
@@ -1277,6 +1357,8 @@ function buildOpsProfile(sale, operations = []) {
   }
   const critical = !repoConfirmed && (insuranceCancelled
     || insuranceExpired
+    || (form.insurance_customer_role === 'Conductor agregado' && form.insurance_driver_listed !== 'Si')
+    || form.insurance_address_review_status === 'Inconsistencia critica'
     || form.gps_device_status === 'Desconectado'
     || gpsOutsideFlorida
     || (recoveryOpen && (!form.recovery_last_location || !form.recovery_policy_active_on_event))
@@ -1289,7 +1371,11 @@ function buildOpsProfile(sale, operations = []) {
     insuranceClaimOpen, insuranceCancelled, insuranceInvalidated, insuranceExpired, insuranceRepossession, repoConfirmed,
     insuranceCancelledDays, siniestroOpen, gapClaimOpen, recoveryOpen, noFollowUp, noteProblem, overdue, alerts,
     insuranceDaysSince, gpsDaysSince, gapClaimDays, insuranceClaimDays, daysSinceOps, saleAgeDays,
-    dueToday, unscheduledIssue, critical, severity
+    dueToday, unscheduledIssue, critical, severity,
+    partyClassificationPending,
+    driverUnconfirmed: form.insurance_customer_role === 'Conductor agregado' && form.insurance_driver_listed !== 'Si',
+    addressProblem: ['Pendiente de verificar', 'Inconsistencia critica'].includes(form.insurance_address_review_status)
+      || form.insurance_gps_address_match === 'No coincide'
   };
 }
 
@@ -1304,6 +1390,9 @@ function primaryOpsAction(profile) {
   if (profile.insuranceClaimOpen && (profile.insuranceClaimDays === null || profile.insuranceClaimDays >= 7)) return 'Llamar al seguro y actualizar el reclamo';
   if (profile.gapOpen && (profile.gapClaimDays === null || profile.gapClaimDays >= 7)) return 'Dar seguimiento al reclamo GAP y documentos pendientes';
   if (!form.insurance_policy_number) return 'Registrar y verificar la poliza del cliente';
+  if (profile.partyClassificationPending) return 'Clasificar al cliente como titular o conductor de la poliza';
+  if (profile.driverUnconfirmed) return 'Confirmar al cliente como conductor autorizado y documentar el seguimiento';
+  if (profile.addressProblem) return 'Comprobar direcciones declaradas y contrastar la evidencia GPS';
   if (form.insurance_status === 'Activo pending') return 'Completar la verificacion de la poliza';
   if (profile.policyProblem) return 'Corregir la irregularidad de seguro y dejar nota';
   if (profile.gpsMissing) return 'Registrar IMEI y proveedor del GPS';
@@ -1349,6 +1438,9 @@ function opsVisible(profile) {
   if (opsFilter === 'insurance_missing') return !profile.form.insurance_policy_number;
   if (opsFilter === 'insurance_cancelled') return profile.insuranceCancelled;
   if (opsFilter === 'insurance_expired') return profile.insuranceExpired;
+  if (opsFilter === 'insurance_classification') return profile.partyClassificationPending;
+  if (opsFilter === 'insurance_driver') return profile.driverUnconfirmed;
+  if (opsFilter === 'insurance_address') return profile.addressProblem;
   if (opsFilter === 'gps') return profile.gpsProblem;
   if (opsFilter === 'gps_sos') return profile.form.gps_device_status === 'Desconectado';
   if (opsFilter === 'gps_inactive') return profile.form.gps_device_status === 'Inactivo';
@@ -1371,7 +1463,10 @@ const opsFilterGroups = {
     ['Cancelado', 'insurance_cancelled'],
     ['Vencido', 'insurance_expired'],
     ['Activo pendiente', 'insurance_pending'],
-    ['Sin poliza', 'insurance_missing']
+    ['Sin poliza', 'insurance_missing'],
+    ['Clasificacion pendiente', 'insurance_classification'],
+    ['Conductor no confirmado', 'insurance_driver'],
+    ['Direcciones', 'insurance_address']
   ],
   gps: [
     ['Todo GPS', 'gps'],
@@ -1397,6 +1492,9 @@ const opsFilterTitles = {
   insurance_expired: 'Polizas vencidas',
   insurance_pending: 'Polizas activas pendientes de completar',
   insurance_missing: 'Clientes sin poliza registrada',
+  insurance_classification: 'Polizas pendientes de clasificar por titular o conductor',
+  insurance_driver: 'Clientes no confirmados como conductores',
+  insurance_address: 'Direcciones que requieren comprobacion',
   gps: 'GPS que requieren atencion',
   gps_sos: 'GPS desconectados: accion inmediata',
   gps_inactive: 'GPS inactivos',
@@ -1559,6 +1657,8 @@ function showOpsHistory(profile) {
     ['Fecha pendiente', nextOpsDueText(profile)],
     ['Cliente', `Nacimiento: ${profile.form.customer_birth_date ? formatDateDisplay(profile.form.customer_birth_date) : 'pendiente'} | Telefono: ${profile.sale.customer_phone || 'sin telefono'}`],
     ['Seguro', `${profile.form.insurance_status || 'sin verificar'} | Poliza ${profile.form.insurance_policy_number || 'sin numero'} | Vence ${profile.form.insurance_expiration_date ? formatDateDisplay(profile.form.insurance_expiration_date) : 'sin fecha'}`],
+    ['Partes de la poliza', `${profile.form.insurance_customer_role || 'rol pendiente'} | Titular: ${profile.form.insurance_policyholder_name || 'sin registrar'} | Conductor confirmado: ${profile.form.insurance_driver_listed || 'no confirmado'}`],
+    ['Direcciones', `${profile.form.insurance_address_review_status || 'sin revisar'} | Contraste GPS: ${profile.form.insurance_gps_address_match || 'no confirmado'}`],
     ['Cobertura', `Comprehensive + Collision: ${profile.form.insurance_comprehensive === 'Si' && profile.form.insurance_collision === 'Si' ? 'Si' : 'No confirmado'} | EasyCar lien holder: ${profile.form.insurance_lienholder || 'no confirmado'}`],
     ['GPS', `${profile.form.gps_device_status || 'sin verificar'} | IMEI ${profile.form.gps_imei || 'sin registrar'} | Proveedor ${profile.form.gps_provider || 'sin registrar'}`],
     ['Ubicacion y millas', `${profile.form.gps_last_location || 'sin ubicacion'} | ${profile.form.gps_location_jurisdiction || 'jurisdiccion pendiente'} | ${profile.form.gps_monthly_miles || 'sin millas'} en el periodo`],
@@ -1818,7 +1918,8 @@ function exportOpsReport() {
   const headers = [
     'Prioridad', 'Cliente', 'Telefono', 'Email', 'Vehiculo', 'VIN', 'Stock',
     'Estatus seguro', 'Numero poliza', 'Vencimiento poliza', 'Proxima revision seguro',
-    'Estatus GPS', 'IMEI', 'Proveedor GPS', 'Ultima ubicacion', 'Proxima revision GPS',
+    'Rol cliente poliza', 'Titular poliza', 'Cliente conductor confirmado', 'Resultado direcciones', 'Contraste GPS direcciones',
+    'Estatus GPS', 'IMEI', 'Proveedor GPS', 'Ultima transmision GPS', 'Ubicacion transmitida', 'Proxima revision GPS',
     'Evento', 'Estatus GAP', 'Proxima accion', 'Fecha pendiente', 'Ultimo operador', 'Ultima actividad', 'Ultima nota'
   ];
   const rows = [headers, ...visibleProfiles.map(profile => [
@@ -1833,9 +1934,15 @@ function exportOpsReport() {
     profile.form.insurance_policy_number,
     profile.form.insurance_expiration_date,
     profile.form.insurance_next_review_date,
+    profile.form.insurance_customer_role,
+    profile.form.insurance_policyholder_name,
+    profile.form.insurance_driver_listed,
+    profile.form.insurance_address_review_status,
+    profile.form.insurance_gps_address_match,
     profile.form.gps_device_status,
     profile.form.gps_imei,
     profile.form.gps_provider,
+    profile.form.gps_last_seen_at,
     profile.form.gps_last_location,
     profile.form.gps_next_review_date,
     profile.form.recovery_event_type,

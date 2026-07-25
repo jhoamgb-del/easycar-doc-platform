@@ -205,6 +205,10 @@
     .process-panel p { margin: 0; color: var(--muted); font-size: .86rem; line-height: 1.4; }
     .process-panel.critical { border-left-color: var(--red); background: #fff6f7; }
     .process-panel.warn { border-left-color: #c77a00; background: #fff9ed; }
+    .birth-age-group { grid-column: span 2; display: grid; grid-template-columns: minmax(0, 1fr) 96px; gap: 16px; }
+    .policy-party-fields { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 16px; }
+    .policy-party-fields[hidden] { display: none; }
+    .policy-address-alert { grid-column: 1 / -1; }
     .process-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .process-actions button { min-height: 32px; padding: 0 10px; }
     .admin-panel { grid-column: 1 / -1; border-top: 1px solid #d5e1f1; padding-top: 12px; display: grid; gap: 10px; }
@@ -263,6 +267,8 @@
       .brand { align-items: flex-start; flex-direction: column; }
       .grid { grid-template-columns: 1fr; }
       .name-grid { grid-template-columns: 1fr; }
+      .birth-age-group { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) 88px; }
+      .policy-party-fields { grid-template-columns: 1fr; }
       .address-tools, .down-summary { grid-template-columns: 1fr; }
       .down-summary label { border-right: 0; border-bottom: 1px solid #d8e1ee; }
       .down-summary label:last-child { border-bottom: 0; }
@@ -592,7 +598,10 @@
         <label>Telefono para SMS <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+1 305 555 1212"></label>
         <label>Telefono alterno <input id="alternate_phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+1 305 555 1212"></label>
         <label>Licencia / pasaporte / ID <input id="driver_license"></label>
-        <label>Fecha de nacimiento <input id="customer_birth_date" type="date"></label>
+        <div class="birth-age-group">
+          <label>Fecha de nacimiento <input id="customer_birth_date" type="date"></label>
+          <label>Edad <input id="customer_age" type="text" readonly aria-live="polite"></label>
+        </div>
         <label>Co-buyer <input id="co_buyer_name"></label>
 
         <div class="section-title">Vehiculo</div>
@@ -622,12 +631,50 @@
         <label class="insurance-only">Telefono agencia / seguro <input id="insurance_agency_phone"></label>
         <label class="insurance-only">Fecha emision poliza <input id="insurance_issue_date" type="date"></label>
         <label class="insurance-only">Fecha caduca poliza <input id="insurance_expiration_date" type="date"></label>
-        <label class="insurance-only">Direccion de la poliza coincide con la direccion del titular en el contrato
-          <select id="insurance_address_matches">
-            <option value=""></option><option value="Si">Si</option><option value="No">No</option><option value="No confirmado">No confirmado</option>
+        <label class="insurance-only">Relacion del cliente con la poliza
+          <select id="insurance_customer_role">
+            <option value=""></option>
+            <option value="Titular de la poliza">Es titular de la poliza</option>
+            <option value="Conductor agregado">Es conductor agregado</option>
           </select>
         </label>
-        <label class="insurance-only">Direccion que aparece en la poliza <input id="insurance_policy_address" placeholder="Completa si no coincide"></label>
+        <div class="policy-party-fields insurance-only" id="insurancePartyFields" hidden>
+          <label>Nombre del titular de la poliza <input id="insurance_policyholder_name"></label>
+          <label>Relacion del titular con el cliente <input id="insurance_policyholder_relationship" placeholder="Ej. esposo, madre, empleador"></label>
+          <label>Direccion del titular en la poliza <input id="insurance_policyholder_address"></label>
+          <label id="insuranceDriverListedField">Cliente aparece como conductor
+            <select id="insurance_driver_listed">
+              <option value=""></option><option value="Si">Si</option><option value="No">No</option><option value="No confirmado">No confirmado</option>
+            </select>
+          </label>
+          <label id="insuranceDriverNameField">Nombre exacto del cliente en la poliza <input id="insurance_driver_name_on_policy"></label>
+          <label>Direccion declarada para el conductor <input id="insurance_driver_address"></label>
+          <label>Resultado de comparacion de direcciones
+            <select id="insurance_address_review_status">
+              <option value=""></option>
+              <option value="Coinciden">Coinciden</option>
+              <option value="Diferencia explicada">Diferencia explicada</option>
+              <option value="Pendiente de verificar">Pendiente de verificar</option>
+              <option value="Inconsistencia critica">Inconsistencia critica</option>
+            </select>
+          </label>
+          <label>Comparacion con ubicacion habitual GPS
+            <select id="insurance_gps_address_match">
+              <option value=""></option>
+              <option value="Coincide">Coincide</option>
+              <option value="No coincide">No coincide</option>
+              <option value="No confirmado">No confirmado</option>
+            </select>
+          </label>
+          <label class="full">Seguimiento de direcciones <textarea id="insurance_address_follow_up_notes" placeholder="Explica la diferencia, llamada realizada y comprobacion pendiente"></textarea></label>
+        </div>
+        <div class="process-panel warn insurance-only policy-address-alert" id="insuranceAddressAlert" hidden>
+          <h4>Verificacion adicional de identidad y direccion</h4>
+          <p id="insuranceAddressAlertText"></p>
+        </div>
+        <input id="insurance_address_matches" type="hidden">
+        <input id="insurance_policy_address" type="hidden">
+        <input id="insurance_party_schema_version" type="hidden">
         <label class="insurance-only">Poliza cancelada desde <input id="insurance_cancelled_since" type="date"></label>
 
         <div class="section-title insurance-only">VERIFICACION DE LA POLIZA</div>
@@ -710,8 +757,8 @@
             <option value="Desconectado">Desconectado</option>
           </select>
         </label>
-        <label class="insurance-only">Millas al revisar <input id="gps_last_mileage"></label>
-        <label class="insurance-only">Ultima ubicacion <input id="gps_last_location"></label>
+        <label class="insurance-only">Fecha y hora de la ultima transmision GPS <input id="gps_last_seen_at" type="datetime-local"></label>
+        <label class="insurance-only">Ubicacion reportada en esa transmision <input id="gps_last_location" placeholder="Direccion o coordenadas"></label>
         <label class="insurance-only">Ubicacion del vehiculo
           <select id="gps_location_jurisdiction">
             <option value=""></option>
@@ -720,8 +767,8 @@
             <option value="Por confirmar">Por confirmar</option>
           </select>
         </label>
-        <label class="insurance-only">Ultima senal GPS <input id="gps_last_seen_at" type="datetime-local"></label>
         <label class="insurance-only">Donde usualmente duerme el carro <input id="gps_overnight_location" placeholder="Direccion o zona habitual"></label>
+        <label class="insurance-only">Millas al revisar <input id="gps_last_mileage"></label>
         <label class="full insurance-only">Motivo / seguimiento GPS <textarea id="gps_status_reason" placeholder="Obligatorio si no esta activo, esta desconectado o requiere seguimiento"></textarea></label>
         <label class="insurance-only">Proxima revision GPS <input id="gps_next_review_date" type="date" readonly></label>
         <label class="insurance-only">Millas ultimo periodo <input id="gps_monthly_miles" type="number" min="0" step="1" placeholder="0"></label>
@@ -1316,7 +1363,7 @@
       'first_name','middle_name','last_name','second_last_name','co_buyer_name','address','city','state','zip_code','customer_email','phone','alternate_phone','driver_license','customer_birth_date',
       'vin','vehicle_year','vehicle_make','vehicle_model','vehicle_mileage','vehicle_color','vehicle_plate','stock_number','contract_number','transaction_date','sales_rep_name','gps_status','vehicle_history_decision',
       'record_loaded_date','vehicle_loaded_date','insurance_first_review_date','gps_first_review_date',
-      'insurance_provider','insurance_policy_number','insurance_agency_phone','insurance_issue_date','insurance_expiration_date','insurance_address_matches','insurance_policy_address','insurance_cancelled_since','insurance_status','insurance_verified_date','insurance_next_review_date','insurance_payments_current','insurance_comprehensive','insurance_collision','insurance_lienholder','insurance_status_reason','insurance_follow_up_path',
+      'insurance_provider','insurance_policy_number','insurance_agency_phone','insurance_issue_date','insurance_expiration_date','insurance_customer_role','insurance_policyholder_name','insurance_policyholder_relationship','insurance_policyholder_address','insurance_driver_listed','insurance_driver_name_on_policy','insurance_driver_address','insurance_address_review_status','insurance_gps_address_match','insurance_address_follow_up_notes','insurance_address_matches','insurance_policy_address','insurance_party_schema_version','insurance_cancelled_since','insurance_status','insurance_verified_date','insurance_next_review_date','insurance_payments_current','insurance_comprehensive','insurance_collision','insurance_lienholder','insurance_status_reason','insurance_follow_up_path',
       'gps_imei','gps_provider','gps_device_status','gps_battery_connected','gps_last_mileage','gps_last_location','gps_location_jurisdiction','gps_last_seen_at','gps_overnight_location','gps_status_reason','gps_next_review_date','gps_monthly_miles','gps_monthly_miles_status',
       'recovery_event_type','recovery_event_date','recovery_last_location','recovery_policy_active_on_event','recovery_repo_confirmed','recovery_damage_notes','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_claim_number','gap_opened_date','insurance_claim_last_call_date','gap_last_call_date','claim_pending_action','gap_missing_documents','ops_action_type','ops_contact_result','ops_next_action','insurance_gps_notes',
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
@@ -1328,6 +1375,7 @@
     ];
     const $ = id => document.getElementById(id);
     const val = id => ($(id)?.value || '').trim();
+    let loadedFormData = {};
     const allDocs = () => [...ORIGINAL_DOCS, ...VOLUNTARY_DOCS, ...REPO_DOCS];
     const currentSaleType = () => (val('sale_type') === 'REPO' ? 'REPO' : val('sale_type') === 'VOLUNTARY' ? 'VOLUNTARY' : val('sale_type') === 'BANCO' ? 'BANCO' : 'BHPH');
     const activeModule = () => val('active_module') || 'SALE';
@@ -1440,6 +1488,88 @@
     function normalizeVin(value) {
       return String(value || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     }
+    function updateCustomerAge() {
+      const output = $('customer_age');
+      if (!output) return;
+      const raw = val('customer_birth_date');
+      if (!raw) {
+        output.value = '';
+        return;
+      }
+      const parts = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!parts) {
+        output.value = 'Invalida';
+        return;
+      }
+      const birth = new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]));
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (Number.isNaN(birth.getTime()) || birth > today) {
+        output.value = 'Invalida';
+        return;
+      }
+      let age = today.getFullYear() - birth.getFullYear();
+      const birthdayPending = today.getMonth() < birth.getMonth()
+        || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate());
+      if (birthdayPending) age -= 1;
+      output.value = `${age}`;
+    }
+    function customerContractAddress() {
+      return [val('address'), val('city'), val('state'), val('zip_code')].filter(Boolean).join(', ');
+    }
+    function addressKey(value) {
+      return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+    function updateInsurancePartyLogic({ loading = false } = {}) {
+      const role = val('insurance_customer_role');
+      if (role) $('insurance_party_schema_version').value = '2';
+      const partyFields = $('insurancePartyFields');
+      if (partyFields) partyFields.hidden = !role;
+      const isDriver = role === 'Conductor agregado';
+      if ($('insuranceDriverListedField')) $('insuranceDriverListedField').hidden = !isDriver;
+      if ($('insuranceDriverNameField')) $('insuranceDriverNameField').hidden = !isDriver;
+      if (role === 'Titular de la poliza') {
+        if (!val('insurance_policyholder_name')) $('insurance_policyholder_name').value = fullName();
+        if (!val('insurance_policyholder_address')) $('insurance_policyholder_address').value = customerContractAddress();
+        $('insurance_driver_listed').value = 'Si';
+        if (!val('insurance_driver_name_on_policy')) $('insurance_driver_name_on_policy').value = fullName();
+        if (!val('insurance_driver_address')) $('insurance_driver_address').value = customerContractAddress();
+      }
+      const contractAddress = customerContractAddress();
+      const driverAddress = val('insurance_driver_address') || (role === 'Titular de la poliza' ? contractAddress : '');
+      const holderAddress = val('insurance_policyholder_address');
+      const overnight = val('gps_overnight_location');
+      const addressesEntered = Boolean(contractAddress && driverAddress && holderAddress);
+      const contractMatchesDriver = addressesEntered && addressKey(contractAddress) === addressKey(driverAddress);
+      const holderMatchesDriver = addressesEntered && addressKey(holderAddress) === addressKey(driverAddress);
+      const gpsMatchesDeclared = overnight
+        ? [contractAddress, driverAddress, holderAddress].some(address => addressKey(address) && addressKey(address) === addressKey(overnight))
+        : false;
+      if (!loading && addressesEntered && !$('insurance_address_review_status').value) {
+        $('insurance_address_review_status').value = contractMatchesDriver && holderMatchesDriver ? 'Coinciden' : 'Pendiente de verificar';
+      }
+      if (!loading && overnight && !$('insurance_gps_address_match').value) {
+        $('insurance_gps_address_match').value = gpsMatchesDeclared ? 'Coincide' : 'No confirmado';
+      }
+      const reviewStatus = val('insurance_address_review_status');
+      const resolvedAddress = ['Coinciden', 'Diferencia explicada'].includes(reviewStatus);
+      $('insurance_address_matches').value = resolvedAddress ? 'Si' : reviewStatus ? 'No' : '';
+      $('insurance_policy_address').value = holderAddress;
+      const driverUnconfirmed = isDriver && val('insurance_driver_listed') !== 'Si';
+      const gpsMismatch = val('insurance_gps_address_match') === 'No coincide';
+      const addressFollowUp = driverUnconfirmed || ['Pendiente de verificar', 'Inconsistencia critica'].includes(reviewStatus) || gpsMismatch;
+      updatePanel(
+        'insuranceAddressAlert',
+        addressFollowUp,
+        reviewStatus === 'Inconsistencia critica' || driverUnconfirmed ? 'critical' : 'warn',
+        'insuranceAddressAlertText',
+        driverUnconfirmed
+          ? 'No se ha confirmado que el cliente aparezca como conductor autorizado. La poliza no puede marcarse Activo OK.'
+          : gpsMismatch
+            ? 'La ubicacion habitual observada por GPS no coincide con las direcciones declaradas. Confirma los hechos con el cliente y documenta el resultado; el GPS no prueba por si solo el domicilio legal.'
+            : 'Las direcciones del contrato, titular y conductor requieren comprobacion. Registra la llamada, explicacion y evidencia antes de cerrar la verificacion.'
+      );
+    }
     function updateGapVinMatch() {
       const soldVin = normalizeVin(val('vin'));
       const gapVin = normalizeVin(val('gap_issued_vin'));
@@ -1449,7 +1579,7 @@
     }
     function updateInsuranceGpsSchedule() {
       const insuranceBaseRaw = val('insurance_verified_date') || val('insurance_first_review_date') || val('vehicle_loaded_date') || val('transaction_date');
-      const gpsBaseRaw = val('gps_last_seen_at') ? val('gps_last_seen_at').slice(0, 10) : (val('gps_first_review_date') || val('vehicle_loaded_date') || val('transaction_date'));
+      const gpsBaseRaw = val('gps_first_review_date') || val('vehicle_loaded_date') || val('transaction_date');
       const insuranceBase = insuranceBaseRaw ? new Date(`${insuranceBaseRaw}T00:00:00`) : null;
       const gpsBase = gpsBaseRaw ? new Date(`${gpsBaseRaw}T00:00:00`) : null;
       const insuranceInterval = ['Activo pending', 'Cancelado', 'Vencido'].includes(val('insurance_status')) ? 2 : 14;
@@ -1467,6 +1597,10 @@
       return !val('insurance_policy_number')
         || val('insurance_status') === 'Activo pending'
         || ['Cancelado', 'Vencido'].includes(val('insurance_status'))
+        || !val('insurance_customer_role')
+        || (val('insurance_customer_role') === 'Conductor agregado' && val('insurance_driver_listed') !== 'Si')
+        || !['Coinciden', 'Diferencia explicada'].includes(val('insurance_address_review_status'))
+        || val('insurance_gps_address_match') === 'No coincide'
         || val('insurance_address_matches') !== 'Si'
         || val('insurance_payments_current') !== 'Si'
         || val('insurance_comprehensive') !== 'Si'
@@ -1477,6 +1611,17 @@
       const status = val('insurance_status');
       const coverageFields = ['insurance_payments_current', 'insurance_comprehensive', 'insurance_collision', 'insurance_lienholder'];
       if (status === 'Activo OK') {
+        const partyComplete = val('insurance_customer_role')
+          && (val('insurance_customer_role') !== 'Conductor agregado' || val('insurance_driver_listed') === 'Si')
+          && ['Coinciden', 'Diferencia explicada'].includes(val('insurance_address_review_status'))
+          && val('insurance_gps_address_match') !== 'No coincide';
+        if (!partyComplete) {
+          $('insurance_status').value = 'Activo pending';
+          coverageFields.forEach(id => { if ($(id)) $(id).value = ''; });
+          syncInsuranceCoverage();
+          updateInsurancePartyLogic();
+          return;
+        }
         coverageFields.forEach(id => { if ($(id)) $(id).value = 'Si'; });
         if ($('insurance_follow_up_path')) $('insurance_follow_up_path').value = '';
       } else if (status === 'Activo pending') {
@@ -1555,6 +1700,7 @@
     }
     function updateOperationalDialogs() {
       updateGpsLocationAndMileage();
+      updateInsurancePartyLogic();
       const insuranceProblem = isInsuranceProblem();
       const gpsProblem = isGpsProblem();
       const eventType = val('recovery_event_type');
@@ -2281,7 +2427,7 @@
       return ids.reduce((data, id) => {
         data[id] = val(id);
         return data;
-      }, {});
+      }, { ...loadedFormData });
     }
     localStorage.removeItem('easycar_saved_sales_v1');
     localStorage.removeItem('easycar_saved_sales_v2');
@@ -2332,10 +2478,13 @@
     function loadLocalSale(id) {
       const sale = getLocalSales().find(item => item.id === id);
       if (!sale) return;
+      loadedFormData = { ...(sale.form_data || {}) };
       ids.forEach(fieldId => { if ($(fieldId)) $(fieldId).value = ''; });
       Object.entries(sale.form_data || {}).forEach(([fieldId, value]) => {
         if ($(fieldId)) $(fieldId).value = value || '';
       });
+      updateCustomerAge();
+      updateInsurancePartyLogic({ loading: true });
       renderDocs();
       setSaveStatus(sale.cloud_only ? `Resumen ${id.slice(0, 8)} abierto. Para datos completos usa Abrir desde ventas centrales.` : `Venta ${id.slice(0, 8)} abierta desde este navegador.`, sale.cloud_only ? 'warn' : 'good');
       scheduleVinDuplicateCheck();
@@ -2359,6 +2508,10 @@
       setSaveStatus('Guardando venta...', '');
       try {
         const formData = collectFormData();
+        if (!formData.customer_birth_date || $('customer_age')?.value === 'Invalida') {
+          $('customer_birth_date')?.focus();
+          throw new Error('Registra una fecha de nacimiento valida antes de guardar la venta.');
+        }
         const cloudSale = window.EasyCarCloud ? await window.EasyCarCloud.saveSale(formData) : null;
         const sessionId = cloudSale?.id || crypto.randomUUID();
         storeLocalSale(cloudSale ? localSaleSummary(sessionId, formData) : { id: sessionId, created_at: new Date().toISOString(), form_data: formData });
@@ -2433,6 +2586,8 @@
     }
     ids.forEach(id => $(id)?.addEventListener('input', () => {
       if (id === 'transaction_date') syncSaleDates();
+      if (id === 'customer_birth_date') updateCustomerAge();
+      if (id === 'insurance_customer_role' || id === 'insurance_policyholder_name' || id === 'insurance_policyholder_address' || id === 'insurance_driver_listed' || id === 'insurance_driver_name_on_policy' || id === 'insurance_driver_address' || id === 'insurance_address_review_status' || id === 'insurance_gps_address_match' || id === 'gps_overnight_location') updateInsurancePartyLogic();
       if (id === 'insurance_status') applyInsuranceStatusRules();
       if (id === 'insurance_follow_up_path') applyInsuranceFollowUpPath();
       if (id === 'insurance_comprehensive') syncInsuranceCoverage();
@@ -2447,6 +2602,8 @@
     }));
     ids.forEach(id => $(id)?.addEventListener('change', () => {
       if (id === 'transaction_date') syncSaleDates();
+      if (id === 'customer_birth_date') updateCustomerAge();
+      if (id === 'insurance_customer_role' || id === 'insurance_policyholder_name' || id === 'insurance_policyholder_address' || id === 'insurance_driver_listed' || id === 'insurance_driver_name_on_policy' || id === 'insurance_driver_address' || id === 'insurance_address_review_status' || id === 'insurance_gps_address_match' || id === 'gps_overnight_location') updateInsurancePartyLogic();
       if (id === 'insurance_status') applyInsuranceStatusRules();
       if (id === 'insurance_follow_up_path') applyInsuranceFollowUpPath();
       if (id === 'insurance_comprehensive') syncInsuranceCoverage();
@@ -2502,6 +2659,8 @@
     renderSalesHistory();
     setSaleType(currentSaleType());
     ensureDefaultDates();
+    updateCustomerAge();
+    updateInsurancePartyLogic({ loading: true });
     updateInsuranceGpsSchedule();
     updateGpsLocationAndMileage();
     syncInsuranceCoverage();
@@ -2514,6 +2673,7 @@
       setActiveModule,
       setSaveStatus,
       loadFormData(formData) {
+        loadedFormData = { ...(formData || {}) };
         ids.forEach(fieldId => { if ($(fieldId)) $(fieldId).value = ''; });
         Object.entries(formData || {}).forEach(([fieldId, value]) => {
           if ($(fieldId)) $(fieldId).value = value || '';
@@ -2525,14 +2685,16 @@
           setSaleType(formData?.sale_type);
         }
         ensureDefaultDates();
+        updateCustomerAge();
+        updateInsurancePartyLogic({ loading: true });
         if (!$('insurance_comprehensive').value && $('insurance_collision')?.value) $('insurance_comprehensive').value = $('insurance_collision').value;
-        if (val('insurance_status') === 'Activo OK') applyInsuranceStatusRules();
         syncInsuranceCoverage();
         updateGpsLocationAndMileage();
         updateGapVinMatch();
         renderDocs();
       },
       clearForm() {
+        loadedFormData = {};
         ids.forEach(id => { if ($(id)) $(id).value = ''; });
         setSaleType('BHPH');
         $('pickup_payment_count').value = '10';

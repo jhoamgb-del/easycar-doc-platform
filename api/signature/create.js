@@ -88,6 +88,7 @@ function requiredSignatureErrors(form) {
     ['last_name', 'Apellido del cliente'],
     ['customer_email', 'Email del cliente'],
     ['driver_license', 'Licencia, pasaporte o ID'],
+    ['customer_birth_date', 'Fecha de nacimiento del cliente'],
     ['vin', 'VIN'],
     ['vehicle_year', 'Año del vehiculo'],
     ['vehicle_make', 'Marca del vehiculo'],
@@ -129,6 +130,22 @@ function requiredSignatureErrors(form) {
     errors.push('Telefono con codigo de pais, por ejemplo +1 305 555 1212');
   }
   if (form.customer_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.customer_email))) errors.push('Email valido del cliente');
+  if (form.customer_birth_date) {
+    const match = String(form.customer_birth_date).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const year = Number(match?.[1]);
+    const month = Number(match?.[2]);
+    const day = Number(match?.[3]);
+    const parsed = match ? new Date(Date.UTC(year, month - 1, day)) : null;
+    const today = new Date();
+    const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+    const valid = parsed
+      && parsed.getUTCFullYear() === year
+      && parsed.getUTCMonth() === month - 1
+      && parsed.getUTCDate() === day
+      && year >= 1900
+      && parsed.getTime() <= todayUtc;
+    if (!valid) errors.push('Fecha de nacimiento valida y no futura');
+  }
   if (!isVoluntary && !isRepo) {
     if (parseMoneyValue(form.pickup_down_total) <= 0) errors.push('Monto total de la inicial mayor que $0');
     const paymentCount = Number(form.pickup_payment_count);
