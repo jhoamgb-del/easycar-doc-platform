@@ -52,6 +52,7 @@ alter table public.doc_data_correction_log enable row level security;
 grant select, insert, update on public.doc_import_batches to authenticated;
 grant select, insert on public.doc_import_batch_sales to authenticated;
 grant select on public.doc_data_correction_log to authenticated;
+grant delete on public.doc_sales, public.doc_customers to authenticated;
 
 create policy "import_batches_read"
 on public.doc_import_batches for select to authenticated
@@ -65,6 +66,11 @@ create policy "import_batches_update_own_processing"
 on public.doc_import_batches for update to authenticated
 using (created_by = auth.uid() and status = 'processing')
 with check (created_by = auth.uid() and status in ('processing', 'completed'));
+
+create policy "import_batches_admin_rollback_update"
+on public.doc_import_batches for update to authenticated
+using (public.doc_can_admin_users() and status = 'completed')
+with check (public.doc_can_admin_users() and status = 'rolled_back');
 
 create policy "import_batch_sales_read"
 on public.doc_import_batch_sales for select to authenticated
@@ -92,6 +98,28 @@ with check (
 create policy "correction_log_admin_read"
 on public.doc_data_correction_log for select to authenticated
 using (public.doc_can_admin_users());
+
+create policy "sales_delete_imported_admin"
+on public.doc_sales for delete to authenticated
+using (
+  public.doc_can_admin_users()
+  and exists (
+    select 1
+    from public.doc_import_batch_sales imported
+    join public.doc_import_batches batch on batch.id = imported.batch_id
+    where imported.sale_id = doc_sales.id
+      and batch.status = 'completed'
+  )
+);
+
+create policy "customers_delete_import_orphan_admin"
+on public.doc_customers for delete to authenticated
+using (
+  public.doc_can_admin_users()
+  and not exists (
+    select 1 from public.doc_sales sale where sale.customer_id = doc_customers.id
+  )
+);
 
 create or replace function public.doc_import_sales_batch(
   source_file_name text,
@@ -223,7 +251,7 @@ grant execute on function public.doc_import_sales_batch(text, text, jsonb) to au
 create or replace function public.doc_rollback_import_batch(target_batch_id uuid)
 returns integer
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 declare
