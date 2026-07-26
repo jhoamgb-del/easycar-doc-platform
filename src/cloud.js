@@ -40,6 +40,7 @@ const controls = {
   importRun: byId('runBulkImport'),
   importTemplate: byId('downloadImportTemplate'),
   importStatus: byId('bulkImportStatus'),
+  importHistory: byId('bulkImportHistory'),
   opsReport: byId('opsReportPanel'),
   opsSummary: byId('opsSummary'),
   opsSubfilters: byId('opsSubfilters'),
@@ -133,11 +134,15 @@ function setSessionUi(nextSession) {
     loadRecentSales();
     loadArchive();
     loadOpsReport();
+    loadImportBatches();
     loadCurrentProfileRole()
       .then(role => {
-        if (role !== 'admin') return null;
-        controls.adminPanel.hidden = false;
-        return loadAdminUsers();
+        loadImportBatches();
+        if (role === 'admin') {
+          controls.adminPanel.hidden = false;
+          return loadAdminUsers();
+        }
+        return null;
       })
       .catch(error => setCloudStatus(`No se pudo confirmar el rol de acceso: ${error.message}`, 'error'));
     subscribeToCentralUpdates();
@@ -582,20 +587,31 @@ function formDataFromImport(row, headerMap) {
 async function importSalesFromCsv(file) {
   if (!supabase || !session?.user) throw new Error('Debes entrar con usuario autorizado antes de importar.');
   if (!file) throw new Error('Selecciona un archivo CSV.');
-  const rows = parseCsv(await file.text());
+  if (file.size > 5 * 1024 * 1024) throw new Error('El archivo supera el limite de 5 MB.');
+  const fileBuffer = await file.arrayBuffer();
+  const sourceSha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256', fileBuffer))]
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('');
+  const rows = parseCsv(new TextDecoder().decode(fileBuffer));
   if (rows.length < 2) throw new Error('El CSV debe tener encabezados y al menos una fila.');
+  if (rows.length > 1001) throw new Error('Cada carga admite un maximo de 1000 clientes. Divide el archivo en dos lotes.');
   const headers = rows[0].map(normalizeHeader);
   const headerMap = new Map(headers.map((header, index) => [header, index]));
-  const imported = rows.slice(1).map(row => formDataFromImport(row, headerMap)).filter(data => {
-    const name = [data.first_name, data.last_name].filter(Boolean).join(' ');
-    return data.vin || name || data.customer_email || data.phone;
-  });
+  const imported = rows.slice(1)
+    .map((row, index) => ({ formData: formDataFromImport(row, headerMap), sourceRowNumber: index + 2 }))
+    .filter(({ formData }) => {
+      const name = [formData.first_name, formData.last_name].filter(Boolean).join(' ');
+      return formData.vin || name || formData.customer_email || formData.phone;
+    });
   if (!imported.length) throw new Error('No encontre filas con cliente o VIN para cargar.');
 
-  const vins = [...new Set(imported.map(row => row.vin).filter(Boolean))];
+  const vins = [...new Set(imported.map(({ formData }) => formData.vin).filter(Boolean))];
   const stocksByVin = new Map();
-  if (vins.length) {
-    const { data, error } = await supabase.from('doc_sales').select('vin, stock_number').in('vin', vins);
+  for (let offset = 0; offset < vins.length; offset += 100) {
+    const { data, error } = await supabase
+      .from('doc_sales')
+      .select('vin, stock_number')
+      .in('vin', vins.slice(offset, offset + 100));
     if (error) throw error;
     (data || []).forEach(item => {
       const vin = cleanVin(item.vin);
@@ -605,37 +621,138 @@ async function importSalesFromCsv(file) {
     });
   }
 
-  const accepted = [];
-  let skipped = 0;
+  const validatedRows = [];
+  const errors = [];
   let historicalVinWarnings = 0;
-  imported.forEach(formData => {
+  imported.forEach(({ formData, sourceRowNumber }) => {
+    const rowErrors = [];
+    const warnings = [];
+    const customerName = [formData.first_name, formData.middle_name, formData.last_name, formData.second_last_name].filter(Boolean).join(' ').trim();
     const vin = cleanVin(formData.vin);
-    if (!vin) {
-      accepted.push(formData);
-      return;
-    }
     const stock = String(formData.stock_number || '').trim().toUpperCase();
+
+    if (!customerName) rowErrors.push('falta el nombre del cliente');
+    if (vin.length !== 17) rowErrors.push('el VIN debe tener 17 caracteres');
+    if (!stock) rowErrors.push('falta el stock');
+    if (!formData.transaction_date) warnings.push('fecha de venta pendiente');
+    if (!validBirthDate(formData.customer_birth_date)) warnings.push('fecha de nacimiento pendiente');
+    if (!normalizePhoneForSms(formData.phone)) warnings.push('telefono pendiente o sin codigo de pais valido');
+
     const priorStocks = stocksByVin.get(vin) || new Set();
     const unverifiable = priorStocks.size > 0 && (!stock || priorStocks.has(''));
     const exactDuplicate = stock && priorStocks.has(stock);
     if (unverifiable || exactDuplicate) {
-      skipped += 1;
+      rowErrors.push('ya existe ese VIN con el mismo stock o con stock sin confirmar');
+    }
+    if (!rowErrors.length && priorStocks.size > 0) {
+      historicalVinWarnings += 1;
+      warnings.push('VIN historico: existe otra venta con stock diferente');
+    }
+
+    if (rowErrors.length) {
+      errors.push(`Fila ${sourceRowNumber}: ${rowErrors.join('; ')}`);
       return;
     }
-    if (priorStocks.size > 0) historicalVinWarnings += 1;
-    accepted.push(formData);
+
     if (!stocksByVin.has(vin)) stocksByVin.set(vin, new Set());
     stocksByVin.get(vin).add(stock);
+    validatedRows.push({
+      source_row_number: sourceRowNumber,
+      record: saleRecord(formData),
+      warnings
+    });
   });
-  const records = accepted.map(formData => saleRecord(formData));
-  if (!records.length) return { inserted: 0, skipped, historicalVinWarnings };
 
-  const { error } = await supabase.from('doc_sales').insert(records);
+  if (errors.length) {
+    const preview = errors.slice(0, 12).join(' | ');
+    const remainder = errors.length > 12 ? ` | y ${errors.length - 12} error(es) adicionales` : '';
+    throw new Error(`Carga cancelada sin guardar datos. ${preview}${remainder}.`);
+  }
+  if (!validatedRows.length) throw new Error('No quedaron filas validas para cargar.');
+
+  const { data, error } = await supabase.rpc('doc_import_sales_batch', {
+    source_file_name: file.name,
+    source_file_sha256: sourceSha256,
+    import_rows: validatedRows
+  });
   if (error) throw error;
   await loadRecentSales();
   await loadArchive();
   await loadOpsReport();
-  return { inserted: records.length, skipped, historicalVinWarnings };
+  return {
+    inserted: Number(data?.inserted || validatedRows.length),
+    warnings: Number(data?.warnings || 0),
+    historicalVinWarnings,
+    batchId: data?.batch_id || ''
+  };
+}
+
+async function rollbackImportBatch(batch) {
+  if (currentProfileRole !== 'admin') return;
+  const confirmed = window.confirm(`Revertir la carga ${batch.source_file_name} de ${batch.imported_rows} expediente(s)? Solo se permite si ninguno tiene firmas, documentos ni seguimiento.`);
+  if (!confirmed) return;
+  const { data, error } = await supabase.rpc('doc_rollback_import_batch', {
+    target_batch_id: batch.id
+  });
+  if (error) throw error;
+  controls.importStatus.textContent = `Carga revertida de forma controlada: ${Number(data || 0)} expediente(s) retirados. El historial del lote permanece disponible.`;
+  controls.importStatus.className = 'status good';
+  await Promise.all([loadImportBatches(), loadRecentSales(), loadArchive(), loadOpsReport()]);
+}
+
+async function loadImportBatches() {
+  if (!controls.importHistory || !supabase || !session?.user) return;
+  const { data, error } = await supabase
+    .from('doc_import_batches')
+    .select('id, source_file_name, source_sha256, total_rows, imported_rows, warning_count, status, created_at, completed_at, rolled_back_at, created_by')
+    .order('created_at', { ascending: false })
+    .limit(20);
+  controls.importHistory.replaceChildren();
+  if (error) {
+    const message = document.createElement('p');
+    message.className = 'status warn';
+    message.textContent = 'No se pudo consultar el historial de cargas.';
+    controls.importHistory.append(message);
+    return;
+  }
+  if (!data?.length) {
+    const empty = document.createElement('p');
+    empty.className = 'status';
+    empty.textContent = 'Todavia no hay cargas masivas registradas.';
+    controls.importHistory.append(empty);
+    return;
+  }
+  data.forEach(batch => {
+    const row = document.createElement('div');
+    row.className = 'admin-user-row';
+    const identity = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = batch.source_file_name;
+    const reference = document.createElement('div');
+    reference.textContent = `Lote ${batch.id.slice(0, 8)} | Huella ${batch.source_sha256.slice(0, 12)}`;
+    identity.append(name, reference);
+    const totals = document.createElement('div');
+    totals.textContent = `${batch.imported_rows}/${batch.total_rows} expedientes | ${batch.warning_count} advertencias`;
+    const state = document.createElement('div');
+    state.textContent = batch.status === 'completed'
+      ? `Completada ${new Date(batch.completed_at || batch.created_at).toLocaleString('en-US')}`
+      : batch.status === 'rolled_back'
+        ? `Revertida ${new Date(batch.rolled_back_at || batch.created_at).toLocaleString('en-US')}`
+        : 'Procesando';
+    row.append(identity, totals, state);
+    if (currentProfileRole === 'admin' && batch.status === 'completed') {
+      const rollback = document.createElement('button');
+      rollback.type = 'button';
+      rollback.className = 'secondary';
+      rollback.textContent = 'Revertir lote';
+      rollback.addEventListener('click', () => rollbackImportBatch(batch).catch(importError => {
+        controls.importStatus.textContent = `No se puede revertir: ${importError.message}`;
+        controls.importStatus.className = 'status warn';
+      }));
+      row.append(rollback);
+    }
+    controls.importHistory.append(row);
+  });
 }
 
 function downloadImportTemplate() {
@@ -645,13 +762,7 @@ function downloadImportTemplate() {
     'contrato', 'fecha_venta', 'fecha_carga', 'seguro', 'poliza', 'vence_poliza',
     'gps_imei', 'proveedor_gps', 'ubicacion_gps', 'estado_ubicacion_gps', 'millas_mensuales_gps', 'gap'
   ];
-  const example = [
-    'JUAN', 'PEREZ', '3055551212', 'cliente@email.com', '1985-04-20', '123 Main St', 'Miami', 'FL', '33169',
-    '3KPFK4A78HE069822', '2017', 'KIA', 'Forte', '123000', 'BLUE', 'ABC123', 'EC12362',
-    '2026-40', '2026-07-07', '2026-07-13', 'Progressive', 'POL12345', '2026-08-07',
-    '867530900000000', 'Proveedor GPS', 'Miami, FL', 'Dentro de Florida', '850', 'Si'
-  ];
-  const csv = `${headers.join(',')}\n${example.join(',')}\n`;
+  const csv = `${headers.join(',')}\n`;
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -2229,10 +2340,11 @@ async function runBulkImport() {
   controls.importStatus.className = 'status';
   try {
     const result = await importSalesFromCsv(controls.importFile.files?.[0]);
-    controls.importStatus.textContent = `Carga completada: ${result.inserted} expedientes creados, ${result.skipped} filas omitidas por VIN + stock duplicado o stock sin confirmar, ${result.historicalVinWarnings || 0} VIN historicos permitidos con stock diferente.`;
+    controls.importStatus.textContent = `Carga completada y auditada: ${result.inserted} expedientes creados, ${result.warnings || 0} advertencias de datos pendientes y ${result.historicalVinWarnings || 0} VIN historicos permitidos con stock diferente. Lote ${String(result.batchId || '').slice(0, 8)}.`;
     controls.importStatus.className = 'status good';
     setCloudStatus('Carga masiva completada. Los clientes ya aparecen en archivo central y GPS Y SEGURO.', 'good');
     controls.importFile.value = '';
+    await loadImportBatches();
   } catch (error) {
     controls.importStatus.textContent = `No se pudo cargar el archivo: ${error.message || 'revisa el CSV'}`;
     controls.importStatus.className = 'status warn';

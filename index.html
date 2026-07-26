@@ -463,13 +463,15 @@
         </section>
         <section class="import-panel" id="importPanel" hidden>
           <h3>Carga masiva de clientes y carros</h3>
-          <p>Sube un CSV exportado desde Excel, Google Sheets o Numbers. El sistema crea expedientes centrales y el modulo GPS Y SEGURO hereda cliente, VIN y vehiculo.</p>
+          <p>Sube un CSV exportado desde Excel, Google Sheets o Numbers. Antes de guardar, el sistema valida todas las filas. Si encuentra un error bloqueante, cancela el lote completo sin dejar expedientes a medias.</p>
           <div class="import-actions">
             <label>Archivo CSV <input id="bulkImportFile" type="file" accept=".csv,text/csv"></label>
             <button type="button" class="secondary" id="downloadImportTemplate">Plantilla CSV</button>
-            <button type="button" id="runBulkImport">Cargar clientes</button>
+            <button type="button" id="runBulkImport">Validar y cargar</button>
           </div>
-          <div id="bulkImportStatus" class="status">Formato recomendado: nombre, apellido, telefono, email, VIN, ano, marca, modelo, millas, stock, contrato, fecha_venta, poliza, gps_imei, gap.</div>
+          <div id="bulkImportStatus" class="status">Obligatorios: nombre, VIN de 17 caracteres y stock. Cada carga queda identificada por archivo, operador, fecha, hora y expedientes creados.</div>
+          <h3>Historial de cargas</h3>
+          <div class="admin-users" id="bulkImportHistory"></div>
         </section>
         <section class="admin-panel" id="adminPanel" hidden>
           <h3>Administracion de usuarios</h3>
