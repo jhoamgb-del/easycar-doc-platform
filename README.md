@@ -6,7 +6,7 @@ Sistema para preparar, guardar, imprimir y firmar documentos de ventas EasyCar.
 
 ### Firma digital
 
-1. El vendedor inicia sesion con un enlace enviado a su correo.
+1. El vendedor inicia sesion con su correo y contrasena autorizados.
 2. Elige el tipo de venta: **BHPH** o **BANCO**.
 3. Llena y guarda la venta en Supabase.
 4. Selecciona **Enviar firma digital al cliente**.
@@ -35,11 +35,12 @@ El acuerdo de inicial permite escoger interes anual de 0% a 30%, calcula el cale
 - Supabase Postgres: clientes, ventas, estados y auditoria.
 - Supabase Storage: documentos firmados digitalmente y archivos privados.
 - DocuSeal: solicitud y registro de firma electronica.
+- Google Calendar: suscripcion privada a las actividades pendientes del operador.
 
 ## Puesta en marcha
 
 1. Crear un proyecto en Supabase.
-2. Ejecutar `supabase/schema.sql` en Supabase SQL Editor.
+2. Aplicar, en orden, las migraciones de `supabase/migrations/`. Ese directorio es la fuente oficial del esquema; `supabase/schema.sql` se conserva solo como referencia historica.
 3. Configurar el proveedor de correo de Supabase Auth y las URLs permitidas.
 4. Crear el primer usuario y promoverlo a administrador:
 
@@ -114,6 +115,9 @@ En DocuSeal, revisar que la cuenta correcta sea EasyCar y que Billing muestre Pr
 - Los vendedores ven sus propias ventas.
 - Gerentes y administradores pueden ver todas las ventas.
 - Cada venta crea o actualiza automaticamente un registro de cliente para historial y busqueda.
+- Cada expediente mantiene actividades separadas de seguro y GPS, con fecha, responsable, estado y bitacora inmutable de cambios.
+- La ficha del cliente muestra los pendientes y los historiales completos de seguro, GPS y otras gestiones sin alterar la venta al consultarla.
+- El calendario privado usa un token revocable y no publica nombres, VIN, telefonos, polizas ni notas del cliente.
 - Los documentos firmados se guardan en un bucket privado y se consultan desde el Archivo central de documentos.
 - Los enlaces de firma se crean para un cliente especifico y requieren verificacion SMS cuando DocuSeal Pro esta activo.
 - El guardado local del navegador se mantiene solo como respaldo temporal.

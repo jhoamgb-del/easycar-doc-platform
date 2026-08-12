@@ -81,6 +81,7 @@
     input[readonly] { background: #eef4fb; color: #34445e; }
     textarea { min-height: 70px; resize: vertical; }
     .section-title { grid-column: 1 / -1; margin-top: 5px; padding: 9px 12px; background: var(--dark); color: #fff; border-left: 5px solid var(--red); border-radius: 6px; font-weight: 800; }
+    .section-title[id] { scroll-margin-top: 16px; }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
     button { min-height: 44px; border: 0; border-radius: 6px; padding: 0 16px; background: var(--blue); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
     button.secondary { background: #e9eef6; color: var(--dark); border: 1px solid var(--line); }
@@ -186,6 +187,9 @@
     .ops-history-header h3 { margin: 0; font-size: 1rem; }
     .ops-history-header p { margin: 4px 0 0; color: var(--muted); font-size: .8rem; }
     .ops-history-header button { min-width: 36px; min-height: 36px; padding: 0; font-size: 1.2rem; }
+    .ops-history-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+    .ops-history-actions > button { min-width: auto; padding: 9px 12px; font-size: .78rem; }
+    .ops-history-actions form { margin: 0; }
     .ops-history-body { display: grid; gap: 16px; padding: 16px 18px 20px; overflow: auto; }
     .ops-history-body h4 { margin: 0 0 8px; font-size: .86rem; }
     .ops-history-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; border-top: 1px solid #d5e1f1; }
@@ -301,6 +305,9 @@
       .ops-view-actions { align-items: stretch; flex-direction: column; width: 100%; }
       .ops-view-actions button { width: 100%; }
       .ops-history-facts { grid-template-columns: 1fr; }
+      .ops-history-header { align-items: stretch; }
+      .ops-history-actions { justify-content: flex-start; }
+      .ops-history-actions > button { flex: 1 1 145px; }
       .ops-row { grid-template-columns: 1fr; }
       .ops-operator-row { grid-template-columns: 1fr 1fr; }
       .ops-calendar-task { grid-template-columns: 1fr; }
@@ -548,8 +555,9 @@
         <section class="ops-calendar" id="opsCalendarPanel" aria-label="Calendario del operador" hidden>
           <div class="ops-calendar-header">
             <h4 id="opsCalendarTitle">Agenda del operador</h4>
-            <div><button type="button" class="secondary" id="opsCalendarPrevious" aria-label="Mes anterior">&lt;</button><button type="button" class="secondary" id="opsCalendarNext" aria-label="Mes siguiente">&gt;</button></div>
+            <div><button type="button" class="secondary" id="connectGoogleCalendar">Conectar Google Calendar</button><button type="button" class="secondary" id="opsCalendarPrevious" aria-label="Mes anterior">&lt;</button><button type="button" class="secondary" id="opsCalendarNext" aria-label="Mes siguiente">&gt;</button></div>
           </div>
+          <div id="calendarConnectionStatus" class="status">La agenda interna se actualiza inmediatamente. La conexion privada permite ver todas las actividades pendientes en Google Calendar.</div>
           <div class="ops-calendar-weekdays"><span>Dom</span><span>Lun</span><span>Mar</span><span>Mie</span><span>Jue</span><span>Vie</span><span>Sab</span></div>
           <div class="ops-calendar-grid" id="opsCalendarGrid"></div>
           <div class="ops-calendar-agenda" id="opsCalendarAgenda"></div>
@@ -571,15 +579,23 @@
       <dialog class="ops-history-dialog" id="opsHistoryDialog">
         <div class="ops-history-header">
           <div><h3 id="opsHistoryTitle">Historial del expediente</h3><p id="opsHistoryMeta"></p></div>
-          <form method="dialog"><button type="submit" class="secondary" aria-label="Cerrar historial">&times;</button></form>
+          <div class="ops-history-actions">
+            <button type="button" class="secondary" id="opsHistoryEditSale">Editar venta</button>
+            <button type="button" id="opsHistoryEditControl">Actualizar GPS / seguro</button>
+            <form method="dialog"><button type="submit" class="secondary" aria-label="Cerrar historial">&times;</button></form>
+          </div>
         </div>
         <div class="ops-history-body">
           <section><h4>Estado actual</h4><div class="ops-history-facts" id="opsHistoryFacts"></div></section>
-          <section><h4>Actividad auditable</h4><div class="ops-history-timeline" id="opsHistoryTimeline"></div></section>
+          <section><h4>Pendientes y proximas acciones</h4><div class="ops-history-timeline" id="opsHistoryPending"></div></section>
+          <section><h4>Historial de seguro</h4><div class="ops-history-timeline" id="opsHistoryInsurance"></div></section>
+          <section><h4>Historial de GPS</h4><div class="ops-history-timeline" id="opsHistoryGps"></div></section>
+          <section><h4>Cambios en agenda y tareas</h4><div class="ops-history-timeline" id="opsHistoryActivityAudit"></div></section>
+          <section><h4>Otras actividades del expediente</h4><div class="ops-history-timeline" id="opsHistoryOther"></div></section>
         </div>
       </dialog>
       <form id="saleForm" class="grid private-workspace">
-        <div class="section-title">Cliente</div>
+        <div class="section-title" id="clientSection">Cliente</div>
         <div class="name-grid">
           <label>Nombre <input id="first_name"></label>
           <label>Segundo nombre <input id="middle_name"></label>
@@ -607,7 +623,7 @@
         </div>
         <label>Co-buyer <input id="co_buyer_name"></label>
 
-        <div class="section-title">Vehiculo</div>
+        <div class="section-title" id="vehicleSection">Vehiculo</div>
         <label class="full">VIN <input id="vin" maxlength="17"></label>
         <div class="full">
           <button type="button" class="secondary" id="decodeVin">Buscar ano, marca y modelo por VIN</button>
@@ -627,7 +643,7 @@
 
         <label class="insurance-only">Fecha carga del carro <input id="vehicle_loaded_date" type="date"></label>
 
-        <div class="section-title insurance-only">POLIZA DE SEGURO</div>
+        <div class="section-title insurance-only" id="insuranceSection">POLIZA DE SEGURO</div>
         <div class="storage-note insurance-only">Identifica la poliza una vez. Cliente, VIN, stock y vehiculo ya estan heredados del expediente central.</div>
         <label class="insurance-only">Proveedor seguro <input id="insurance_provider"></label>
         <label class="insurance-only">Numero de poliza <input id="insurance_policy_number"></label>
@@ -719,7 +735,7 @@
           </select>
         </label>
         <label class="full insurance-only">Motivo / resultado de verificacion de seguro <textarea id="insurance_status_reason" placeholder="Obligatorio si no esta activa o falta una cobertura"></textarea></label>
-        <div class="process-actions insurance-only"><button type="button" class="secondary" id="prepareInsuranceVerification">Agregar verificacion de poliza</button></div>
+        <div class="process-actions insurance-only"><button type="button" class="secondary" id="prepareInsuranceVerification">Preparar nueva verificacion</button><button type="button" id="saveInsuranceReviewInline">Guardar verificacion de poliza</button></div>
         <div class="process-panel insurance-only" id="insuranceActionPanel" hidden>
           <h4>Accion requerida por seguro</h4>
           <p id="insuranceActionText"></p>
@@ -737,7 +753,7 @@
           </div>
         </div>
 
-        <div class="section-title insurance-only">GPS</div>
+        <div class="section-title insurance-only" id="gpsSection">GPS</div>
         <div class="storage-note insurance-only">Identifica el equipo una vez. Las credenciales de API nunca se escriben en esta pantalla: se configuran de forma segura en el servidor cuando los proveedores Voltswitch y Advantage las entreguen.</div>
         <label class="insurance-only">GPS IMEI / numero <input id="gps_imei"></label>
         <label class="insurance-only">Proveedor GPS <input id="gps_provider" list="gpsProviderOptions" placeholder="Voltswitch o Advantage"></label>
@@ -783,7 +799,7 @@
             <option value="No calculado">No calculado</option>
           </select>
         </label>
-        <div class="process-actions insurance-only"><button type="button" class="secondary" id="prepareGpsVerification">Agregar verificacion GPS</button></div>
+        <div class="process-actions insurance-only"><button type="button" class="secondary" id="prepareGpsVerification">Preparar nueva verificacion</button><button type="button" id="saveGpsReviewInline">Guardar verificacion GPS</button></div>
         <div class="process-panel insurance-only" id="gpsActionPanel" hidden>
           <h4>Alerta interna GPS</h4>
           <p id="gpsActionText"></p>
@@ -871,7 +887,7 @@
           <p id="claimActionText"></p>
         </div>
 
-        <div class="section-title insurance-only">Registro y seguimiento</div>
+        <div class="section-title insurance-only" id="operationsSection">Registro y seguimiento</div>
         <div class="process-panel insurance-only" id="reviewSnapshotPanel">
           <h4>Resumen de lo que quedara asentado</h4>
           <p id="reviewSnapshotText">Completa seguro, GPS o evento especial para ver el resumen de la revision.</p>
@@ -2529,9 +2545,19 @@
         return `<div class="sale-row"><strong>${esc(customer)}</strong><span>${esc(car)}</span><span>${esc(data.transaction_date || '')}</span><span>${esc(data.contract_number || 'Sin contrato')}</span><button type="button" data-load-sale="${esc(sale.id)}">Abrir</button></div>`;
       }).join('');
     }
-    function loadLocalSale(id) {
+    async function loadLocalSale(id) {
       const sale = getLocalSales().find(item => item.id === id);
       if (!sale) return;
+      if (sale.cloud_only && window.EasyCarCloud?.openSale) {
+        try {
+          await window.EasyCarCloud.openSale(id, { scrollTarget: 'clientSection' });
+          setSaveStatus(`Venta central ${id.slice(0, 8)} abierta con todos sus datos.`, 'good');
+        } catch (error) {
+          setSaveStatus(`No se pudo abrir la venta central: ${error.message}`, 'warn');
+        }
+        return;
+      }
+      window.EasyCarCloud?.clearCurrentSale?.();
       loadedFormData = { ...(sale.form_data || {}) };
       ids.forEach(fieldId => { if ($(fieldId)) $(fieldId).value = ''; });
       Object.entries(sale.form_data || {}).forEach(([fieldId, value]) => {
@@ -2542,7 +2568,7 @@
       renderDocs();
       setSaveStatus(sale.cloud_only ? `Resumen ${id.slice(0, 8)} abierto. Para datos completos usa Abrir desde ventas centrales.` : `Venta ${id.slice(0, 8)} abierta desde este navegador.`, sale.cloud_only ? 'warn' : 'good');
       scheduleVinDuplicateCheck();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      $('clientSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     function setSaveStatus(message, className = '') {
       const status = $('saveStatus');
@@ -2621,7 +2647,9 @@
           setInsuranceGpsStatus('Escribe una nota concreta de al menos 12 caracteres: a quien llamo, que verifico y que falta.', 'warn');
           return;
         }
-        if ((isInsuranceProblem() || gpsRequiresFollowUp()) && !formData.ops_next_action) {
+        const insuranceAction = ['Verificacion seguro', 'Llamada seguro'].includes(formData.ops_action_type);
+        const gpsAction = ['Verificacion GPS', 'Revision GPS'].includes(formData.ops_action_type);
+        if (((insuranceAction && isInsuranceProblem()) || (gpsAction && gpsRequiresFollowUp())) && !formData.ops_next_action) {
           $('ops_next_action')?.focus();
           setInsuranceGpsStatus('Hay una irregularidad de seguro o GPS. Define la proxima accion antes de registrar la revision.', 'warn');
           return;
@@ -2718,6 +2746,16 @@
     $('saveSale').addEventListener('click', saveSale);
     $('saveInsuranceGpsData')?.addEventListener('click', saveInsuranceGpsData);
     $('saveInsuranceGpsReview').addEventListener('click', saveInsuranceGpsReview);
+    $('saveInsuranceReviewInline')?.addEventListener('click', () => {
+      $('ops_action_type').value = 'Verificacion seguro';
+      if (!$('ops_contact_result').value) $('ops_contact_result').value = val('insurance_status') === 'Activo OK' ? 'Completado' : 'Irregularidad';
+      saveInsuranceGpsReview();
+    });
+    $('saveGpsReviewInline')?.addEventListener('click', () => {
+      $('ops_action_type').value = 'Verificacion GPS';
+      if (!$('ops_contact_result').value) $('ops_contact_result').value = val('gps_device_status') === 'Activo' ? 'Completado' : 'Irregularidad';
+      saveInsuranceGpsReview();
+    });
     $('sale_type_bhph').addEventListener('change', () => setSaleType('BHPH'));
     $('sale_type_bank').addEventListener('change', () => setSaleType('BANCO'));
     $('sale_type_voluntary').addEventListener('change', () => setSaleType('VOLUNTARY'));

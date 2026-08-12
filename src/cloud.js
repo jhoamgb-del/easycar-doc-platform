@@ -55,12 +55,20 @@ const controls = {
   opsHistoryTitle: byId('opsHistoryTitle'),
   opsHistoryMeta: byId('opsHistoryMeta'),
   opsHistoryFacts: byId('opsHistoryFacts'),
-  opsHistoryTimeline: byId('opsHistoryTimeline'),
+  opsHistoryPending: byId('opsHistoryPending'),
+  opsHistoryInsurance: byId('opsHistoryInsurance'),
+  opsHistoryGps: byId('opsHistoryGps'),
+  opsHistoryActivityAudit: byId('opsHistoryActivityAudit'),
+  opsHistoryOther: byId('opsHistoryOther'),
+  opsHistoryEditSale: byId('opsHistoryEditSale'),
+  opsHistoryEditControl: byId('opsHistoryEditControl'),
   opsCalendarTitle: byId('opsCalendarTitle'),
   opsCalendarGrid: byId('opsCalendarGrid'),
   opsCalendarAgenda: byId('opsCalendarAgenda'),
   opsCalendarPrevious: byId('opsCalendarPrevious'),
   opsCalendarNext: byId('opsCalendarNext'),
+  connectGoogleCalendar: byId('connectGoogleCalendar'),
+  calendarConnectionStatus: byId('calendarConnectionStatus'),
   opsOperatorSummary: byId('opsOperatorSummary'),
   opsSearch: byId('opsSearch'),
   clearOpsSearch: byId('clearOpsSearch'),
@@ -90,6 +98,7 @@ let realtimeChannel = null;
 let realtimeRefreshTimer = null;
 let currentProfileRole = '';
 let opsCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let currentHistoryProfile = null;
 
 function setCloudStatus(message, tone = '') {
   controls.status.textContent = message;
@@ -344,6 +353,7 @@ function validBirthDate(value) {
 
 async function saveSale(formData, { quiet = false } = {}) {
   if (!supabase || !session?.user) return null;
+  const wasExisting = Boolean(currentSaleId);
   formData = withNormalizedPhones(formData);
   const record = saleRecord(formData);
   let result;
@@ -380,6 +390,27 @@ async function saveSale(formData, { quiet = false } = {}) {
   if (error) throw error;
   setCurrentSale(data.id, data.status);
   if (!quiet) {
+    const module = formData.sale_type === 'BANCO'
+      ? 'bank'
+      : formData.sale_type === 'REPO'
+        ? 'repo'
+        : formData.sale_type === 'VOLUNTARY'
+          ? 'voluntary'
+          : 'bhph';
+    const { error: auditError } = await supabase.from('doc_sale_operations').insert({
+      sale_id: data.id,
+      module,
+      event_type: wasExisting ? 'Venta guardada / actualizada' : 'Venta creada',
+      status: 'Completado',
+      follow_up_at: null,
+      note: 'Datos generales del cliente, vehiculo y condiciones de la venta guardados en el expediente central.',
+      payload: { sale_type: formData.sale_type || 'BHPH', source: 'sales_form' },
+      created_by: session.user.id
+    });
+    if (auditError) {
+      console.error('La venta se guardo, pero no pudo registrarse su asiento de auditoria.', auditError);
+      setCloudStatus('Venta guardada. La bitacora de la venta no pudo actualizarse y requiere revision administrativa.', 'error');
+    }
     await loadRecentSales();
     await loadArchive();
     await loadOpsReport();
@@ -933,7 +964,7 @@ async function saveInsuranceGpsReview(formData) {
   }];
   // Each scheduled review is retained as an audit entry. The current due date
   // is read from the sale record, so replacing it never requires deleting history.
-  if (!repoConfirmed && formData.insurance_next_review_date) {
+  if (!repoConfirmed && isInsuranceAction && formData.insurance_next_review_date) {
     rows.push({
       module: 'insurance_gps',
       event_type: 'proxima_revision_seguro',
@@ -944,7 +975,7 @@ async function saveInsuranceGpsReview(formData) {
       created_by: session.user.id
     });
   }
-  if (!repoConfirmed && formData.gps_next_review_date) {
+  if (!repoConfirmed && isGpsAction && formData.gps_next_review_date) {
     rows.push({
       module: 'insurance_gps',
       event_type: 'proxima_revision_gps',
@@ -1003,16 +1034,23 @@ async function saveInsuranceGpsIdentification(formData) {
   return sale;
 }
 
-async function loadSale(id) {
+async function loadSale(id, { module = '', scrollTarget = 'clientSection' } = {}) {
   const { data, error } = await supabase.from('doc_sales').select('*').eq('id', id).single();
   if (error) throw error;
   const formData = { ...(data.form_data || {}) };
   formData.insurance_status = normalizedInsuranceStatus(formData);
   app.loadFormData(formData);
+  if (module === 'INSURANCE_GPS') app.setActiveModule?.('INSURANCE_GPS');
   setCurrentSale(data.id, data.status);
   await loadSaleOperationHistory(data.id);
   setCloudStatus(`Venta de ${data.customer_name || 'cliente'} abierta desde el expediente central.`, 'good');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const target = document.getElementById(scrollTarget);
+  if (target) {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => target.scrollIntoView({ behavior: 'auto', block: 'start' }));
+    });
+  }
+  return data;
 }
 
 async function loadSaleOperationHistory(saleId) {
@@ -1119,8 +1157,8 @@ async function loadRecentSales() {
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'secondary';
-    open.textContent = 'Abrir';
-    open.addEventListener('click', () => loadSale(sale.id).catch(error => setCloudStatus(error.message, 'error')));
+    open.textContent = 'Ver ficha';
+    open.addEventListener('click', () => showCaseFileById(sale.id));
     row.append(customer, vehicle, status, open);
     controls.salesList.append(row);
   });
@@ -1204,9 +1242,14 @@ function renderArchiveResults(sales) {
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'secondary';
-    open.textContent = 'Abrir expediente';
-    open.addEventListener('click', () => loadSale(sale.id).catch(error => setCloudStatus(error.message, 'error')));
-    docs.prepend(open);
+    open.textContent = 'Ver ficha completa';
+    open.addEventListener('click', () => showCaseFileById(sale.id));
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'secondary';
+    edit.textContent = 'Editar venta';
+    edit.addEventListener('click', () => loadSale(sale.id, { scrollTarget: 'clientSection' }).catch(error => setCloudStatus(error.message, 'error')));
+    docs.prepend(open, edit);
     summary.append(customer, vehicle, status);
     expanded.append(docs);
     row.append(summary, expanded);
@@ -1411,7 +1454,7 @@ function latestOperatorOperation(operations = []) {
   return latestOperation(operations.filter(isOperatorAction));
 }
 
-function buildOpsProfile(sale, operations = []) {
+function buildOpsProfile(sale, operations = [], activities = []) {
   const form = { ...(sale.form_data || {}) };
   form.insurance_status = normalizedInsuranceStatus(form);
   const latest = latestOperatorOperation(operations);
@@ -1533,7 +1576,7 @@ function buildOpsProfile(sale, operations = []) {
     || (insuranceClaimDays !== null && insuranceClaimDays >= 7));
   const severity = repoConfirmed ? 'closed' : critical ? 'critical' : alerts.length ? 'attention' : 'ok';
   return {
-    sale, form, operations, latest, policyProblem, gpsProblem, gpsMissing,
+    sale, form, operations, activities, latest, policyProblem, gpsProblem, gpsMissing,
     gpsOutsideFlorida, gpsLocationUnconfirmed, gpsMileageExceeded, gapProblem, gapOpen,
     insuranceClaimOpen, insuranceCancelled, insuranceInvalidated, insuranceExpired, insuranceRepossession, repoConfirmed,
     insuranceCancelledDays, siniestroOpen, gapClaimOpen, recoveryOpen, noFollowUp, noteProblem, overdue, alerts,
@@ -1805,27 +1848,162 @@ async function copyCustomerMessage(profile) {
 }
 
 function openOpsSale(profile) {
-  loadSale(profile.sale.id)
-    .then(() => {
-      app.setActiveModule?.('INSURANCE_GPS');
-      setCloudStatus('Expediente abierto en GPS Y SEGURO. Registra la revision para dejar fecha, hora y usuario.', 'good');
-    })
+  const scrollTarget = profile.gpsProblem && !profile.policyProblem
+    ? 'gpsSection'
+    : profile.policyProblem
+      ? 'insuranceSection'
+      : 'operationsSection';
+  loadSale(profile.sale.id, { module: 'INSURANCE_GPS', scrollTarget })
+    .then(() => setCloudStatus('Expediente abierto directamente en GPS Y SEGURO. Registra la revision para dejar fecha, hora y usuario.', 'good'))
     .catch(error => setCloudStatus(error.message, 'error'));
+}
+
+function operationCategory(operation) {
+  const text = `${operation?.event_type || ''} ${operation?.payload?.ops_action_type || ''}`.toLowerCase();
+  const gps = /\bgps\b|geolocal|ubicacion|millas/.test(text);
+  const insurance = /seguro|poliza|asegur|coverage|collision|comprehensive/.test(text);
+  if (gps && insurance) return 'shared';
+  if (gps) return 'gps';
+  if (insurance) return 'insurance';
+  return 'other';
+}
+
+function appendTimeline(container, operations, emptyText) {
+  if (!container) return;
+  container.replaceChildren();
+  if (!operations.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-history';
+    empty.textContent = emptyText;
+    container.append(empty);
+    return;
+  }
+  operations.forEach(operation => {
+    const entry = document.createElement('div');
+    entry.className = 'ops-history-entry';
+    const title = document.createElement('strong');
+    const exactDate = operation.created_at ? new Date(operation.created_at).toLocaleString('en-US') : 'Sin fecha';
+    title.textContent = `${exactDate} | ${operation.event_type || 'Seguimiento'}`;
+    const detail = document.createElement('span');
+    const operator = operation.operator_name || (operation.created_by ? `Usuario ${String(operation.created_by).slice(0, 8)}` : 'Sin operador');
+    const nextAction = operation.payload?.ops_next_action || operation.follow_up_at
+      ? ` | Proxima accion: ${operation.payload?.ops_next_action || 'Seguimiento'}${operation.follow_up_at ? ` (${formatDateDisplay(operation.follow_up_at)})` : ''}`
+      : '';
+    detail.textContent = `Operador: ${operator} | Resultado: ${operation.status || 'Registrado'}${nextAction} | Nota: ${operation.note || 'Sin nota'}`;
+    entry.append(title, detail);
+    container.append(entry);
+  });
+}
+
+async function loadCaseFile(saleId) {
+  const [
+    { data: sale, error: saleError },
+    { data: operations, error: operationsError },
+    { data: activities, error: activitiesError },
+    { data: activityEvents, error: activityEventsError }
+  ] = await Promise.all([
+    supabase
+      .from('doc_sales')
+      .select('id, customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at, updated_at')
+      .eq('id', saleId)
+      .single(),
+    supabase
+      .from('doc_sale_operations')
+      .select('id, sale_id, module, event_type, status, follow_up_at, note, payload, created_by, created_at')
+      .eq('sale_id', saleId)
+      .order('created_at', { ascending: false })
+      .limit(500),
+    supabase
+      .from('doc_activities')
+      .select('id, sale_id, module, activity_type, title, status, priority, due_at, note, assigned_to, created_by, completed_by, completed_at, created_at, updated_at')
+      .eq('sale_id', saleId)
+      .order('due_at', { ascending: true })
+      .limit(500),
+    supabase
+      .from('doc_activity_events')
+      .select('id, activity_id, sale_id, event_type, previous_status, new_status, previous_due_at, new_due_at, note, actor_id, created_at')
+      .eq('sale_id', saleId)
+      .order('created_at', { ascending: false })
+      .limit(500)
+  ]);
+  if (saleError) throw saleError;
+  if (operationsError) throw operationsError;
+  if (activitiesError && activitiesError.code !== '42P01') throw activitiesError;
+  if (activityEventsError && activityEventsError.code !== '42P01') throw activityEventsError;
+  const operatorIds = [...new Set([
+    ...(operations || []).map(operation => operation.created_by),
+    ...(activityEvents || []).map(event => event.actor_id)
+  ].filter(Boolean))];
+  const operatorNames = new Map();
+  if (operatorIds.length) {
+    const { data: profiles } = await supabase.from('doc_user_profiles').select('id, full_name').in('id', operatorIds);
+    (profiles || []).forEach(profile => operatorNames.set(profile.id, profile.full_name || 'Usuario sin nombre'));
+  }
+  (operations || []).forEach(operation => {
+    operation.operator_name = operatorNames.get(operation.created_by) || `Usuario ${String(operation.created_by || '').slice(0, 8)}`;
+  });
+  const profile = buildOpsProfile(sale, (operations || []).filter(operation => operation.module === 'insurance_gps'), activities || []);
+  profile.allOperations = operations || [];
+  const activityById = new Map((activities || []).map(activity => [activity.id, activity]));
+  profile.activityAudit = (activityEvents || []).map(event => {
+    const activity = activityById.get(event.activity_id);
+    const label = {
+      created: 'Tarea creada',
+      completed: 'Tarea completada',
+      reopened: 'Tarea reabierta',
+      rescheduled: 'Tarea reprogramada',
+      cancelled: 'Tarea cancelada',
+      updated: 'Tarea actualizada'
+    }[event.event_type] || 'Cambio de tarea';
+    const dueChange = event.previous_due_at && event.new_due_at && event.previous_due_at !== event.new_due_at
+      ? `Fecha anterior: ${new Date(event.previous_due_at).toLocaleString('en-US')} | Nueva fecha: ${new Date(event.new_due_at).toLocaleString('en-US')}`
+      : event.new_due_at
+        ? `Fecha programada: ${new Date(event.new_due_at).toLocaleString('en-US')}`
+        : '';
+    return {
+      event_type: `${label}: ${activity?.title || 'Actividad del expediente'}`,
+      created_at: event.created_at,
+      status: event.new_status || 'Registrado',
+      note: [dueChange, event.note].filter(Boolean).join(' | ') || 'Cambio registrado automaticamente.',
+      operator_name: operatorNames.get(event.actor_id) || (event.actor_id ? `Usuario ${String(event.actor_id).slice(0, 8)}` : 'Sistema')
+    };
+  });
+  return profile;
+}
+
+function showCaseFileById(saleId) {
+  setCloudStatus('Abriendo ficha completa del cliente y vehiculo...', '');
+  loadCaseFile(saleId)
+    .then(profile => {
+      showOpsHistory(profile);
+      setCloudStatus('Ficha completa abierta. La consulta no modifica el expediente.', 'good');
+    })
+    .catch(error => setCloudStatus(`No se pudo abrir la ficha: ${error.message}`, 'error'));
 }
 
 function showOpsHistory(profile) {
   if (!controls.opsHistoryDialog) return;
+  currentHistoryProfile = profile;
   controls.opsHistoryTitle.textContent = profile.sale.customer_name || 'Cliente sin nombre';
   controls.opsHistoryMeta.textContent = [
     profile.sale.vehicle_description || 'Vehiculo sin completar',
     profile.sale.vin ? `VIN ${profile.sale.vin}` : '',
     profile.sale.stock_number ? `Stock ${profile.sale.stock_number}` : ''
   ].filter(Boolean).join(' | ');
+  const paymentTerms = [
+    profile.form.pickup_down_total ? `Inicial ${profile.form.pickup_down_total}` : 'Inicial sin registrar',
+    profile.form.pickup_down_paid_today ? `Pagado hoy ${profile.form.pickup_down_paid_today}` : '',
+    profile.form.pickup_finance_amount ? `Financiado ${profile.form.pickup_finance_amount}` : '',
+    profile.form.pickup_payment_count ? `${profile.form.pickup_payment_count} cuotas ${profile.form.pickup_frequency || ''}` : '',
+    profile.form.pickup_start_date ? `Primera ${formatDateDisplay(profile.form.pickup_start_date)}` : ''
+  ].filter(Boolean).join(' | ');
   const facts = [
     ['Prioridad', profile.severity === 'critical' ? 'CRITICO' : profile.severity === 'attention' ? 'PENDIENTE' : profile.severity === 'closed' ? 'CERRADO' : 'AL DIA'],
     ['Proxima accion', primaryOpsAction(profile)],
     ['Fecha pendiente', nextOpsDueText(profile)],
     ['Cliente', `Nacimiento: ${profile.form.customer_birth_date ? formatDateDisplay(profile.form.customer_birth_date) : 'pendiente'} | Telefono: ${profile.sale.customer_phone || 'sin telefono'}`],
+    ['Venta', `${saleTypeLabel(profile.form)} | ${profile.sale.transaction_date ? formatDateDisplay(profile.sale.transaction_date) : 'sin fecha'} | Contrato ${profile.sale.contract_number || 'sin numero'}`],
+    ['Condiciones de pago', paymentTerms],
     ['Seguro', `${profile.form.insurance_status || 'sin verificar'} | Poliza ${profile.form.insurance_policy_number || 'sin numero'} | Vence ${profile.form.insurance_expiration_date ? formatDateDisplay(profile.form.insurance_expiration_date) : 'sin fecha'}`],
     ['Partes de la poliza', `${profile.form.insurance_customer_role || 'rol pendiente'} | Titular: ${profile.form.insurance_policyholder_name || 'sin registrar'} | Conductor confirmado: ${profile.form.insurance_driver_listed || 'no confirmado'}`],
     ['Direcciones', `${profile.form.insurance_address_review_status || 'sin revisar'} | Contraste GPS: ${profile.form.insurance_gps_address_match || 'no confirmado'}`],
@@ -1845,35 +2023,66 @@ function showOpsHistory(profile) {
     fact.append(title, detail);
     return fact;
   }));
-  controls.opsHistoryTimeline.replaceChildren();
-  if (!profile.operations.length) {
-    const empty = document.createElement('p');
-    empty.className = 'empty-history';
-    empty.textContent = 'No existe actividad del operador en este expediente.';
-    controls.opsHistoryTimeline.append(empty);
-  } else {
-    profile.operations.slice(0, 50).forEach(operation => {
-      const entry = document.createElement('div');
-      entry.className = 'ops-history-entry';
-      const title = document.createElement('strong');
-      const exactDate = operation.created_at ? new Date(operation.created_at).toLocaleString('en-US') : 'Sin fecha';
-      title.textContent = `${exactDate} | ${operation.event_type || 'Seguimiento'}`;
-      const detail = document.createElement('span');
-      const operator = operation.operator_name || (operation.created_by ? `Usuario ${String(operation.created_by).slice(0, 8)}` : 'Sin operador');
-      const nextAction = operation.payload?.ops_next_action || operation.follow_up_at
-        ? ` | Proxima accion: ${operation.payload?.ops_next_action || formatDateDisplay(operation.follow_up_at)}`
-        : '';
-      detail.textContent = `Operador: ${operator} | Resultado: ${operation.status || 'Registrado'}${nextAction} | Nota: ${operation.note || 'Sin nota'}`;
-      entry.append(title, detail);
-      controls.opsHistoryTimeline.append(entry);
-    });
+  const allOperations = profile.allOperations || profile.operations || [];
+  const pendingTasks = calendarTasksForProfiles([profile]);
+  if (controls.opsHistoryPending) {
+    controls.opsHistoryPending.replaceChildren();
+    if (!pendingTasks.length) {
+      const empty = document.createElement('p');
+      empty.className = 'empty-history';
+      empty.textContent = 'No hay una proxima gestion programada. Si el caso sigue activo, el operador debe fijar fecha y accion.';
+      controls.opsHistoryPending.append(empty);
+    } else {
+      pendingTasks.forEach(task => {
+        const entry = document.createElement('div');
+        entry.className = 'ops-history-entry';
+        const title = document.createElement('strong');
+        title.textContent = `${formatDateDisplay(task.key)} ${task.time || '09:00'} | ${task.label}`;
+        const detail = document.createElement('span');
+        detail.textContent = task.note || 'Actividad pendiente programada en el expediente.';
+        entry.append(title, detail);
+        if (task.activity) {
+          const actions = document.createElement('div');
+          actions.className = 'archive-docs';
+          const calendar = document.createElement('button');
+          calendar.type = 'button';
+          calendar.className = 'secondary';
+          calendar.textContent = 'Google Calendar';
+          calendar.addEventListener('click', () => {
+            const url = googleCalendarTaskUrl(task);
+            if (url) window.open(url, '_blank', 'noopener,noreferrer');
+          });
+          const reschedule = document.createElement('button');
+          reschedule.type = 'button';
+          reschedule.className = 'secondary';
+          reschedule.textContent = 'Reprogramar';
+          reschedule.addEventListener('click', () => rescheduleActivity(task.activity).catch(error => setCloudStatus(error.message, 'error')));
+          actions.append(calendar, reschedule);
+          if (!['insurance_review', 'gps_review'].includes(task.activity.activity_type)) {
+            const complete = document.createElement('button');
+            complete.type = 'button';
+            complete.textContent = 'Completar seguimiento';
+            complete.addEventListener('click', () => completeActivity(task.activity).catch(error => setCloudStatus(error.message, 'error')));
+            actions.append(complete);
+          }
+          entry.append(actions);
+        }
+        controls.opsHistoryPending.append(entry);
+      });
+    }
   }
-  controls.opsHistoryDialog.showModal();
+  appendTimeline(controls.opsHistoryInsurance, allOperations.filter(operation => ['insurance', 'shared'].includes(operationCategory(operation))), 'Todavia no hay verificaciones de seguro registradas.');
+  appendTimeline(controls.opsHistoryGps, allOperations.filter(operation => ['gps', 'shared'].includes(operationCategory(operation))), 'Todavia no hay verificaciones de GPS registradas.');
+  appendTimeline(controls.opsHistoryActivityAudit, profile.activityAudit || [], 'Todavia no hay cambios de agenda registrados.');
+  appendTimeline(controls.opsHistoryOther, allOperations.filter(operation => operationCategory(operation) === 'other'), 'No hay otras actividades registradas.');
+  if (!controls.opsHistoryDialog.open) controls.opsHistoryDialog.showModal();
 }
 
 function localDateKey(value) {
   if (!value) return '';
-  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  const date = value instanceof Date
+    ? new Date(value.getFullYear(), value.getMonth(), value.getDate())
+    : new Date(`${String(value).slice(0, 10)}T00:00:00`);
   if (Number.isNaN(date.getTime())) return '';
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
@@ -1887,18 +2096,16 @@ function googleCalendarTaskUrl(task) {
   const end = new Date(start.getTime() + 30 * 60 * 1000);
   const compact = date => `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}00`;
   const profile = task.profile;
+  const caseId = String(profile.sale.id || '').slice(0, 8).toUpperCase();
   const details = [
-    `Cliente: ${profile.sale.customer_name || 'Cliente'}`,
-    profile.sale.vehicle_description ? `Vehiculo: ${profile.sale.vehicle_description}` : '',
-    profile.sale.vin ? `VIN: ${profile.sale.vin}` : '',
-    profile.sale.stock_number ? `Stock: ${profile.sale.stock_number}` : '',
+    `Caso DOC EASYCAR: ${caseId}`,
     `Accion: ${task.label}`,
-    task.note ? `Notas: ${task.note}` : '',
-    'Abrir DOC EASYCAR: https://docs.easycarus.com'
+    'La informacion personal y operativa permanece dentro de DOC EASYCAR.',
+    'Abrir: https://docs.easycarus.com'
   ].filter(Boolean).join('\n');
   const params = new URLSearchParams({
     action: 'TEMPLATE',
-    text: `DOC EASYCAR - ${task.label} - ${profile.sale.customer_name || 'Cliente'}`,
+    text: `DOC EASYCAR - ${task.label} - Caso ${caseId}`,
     dates: `${compact(start)}/${compact(end)}`,
     ctz: 'America/New_York',
     details
@@ -1908,16 +2115,34 @@ function googleCalendarTaskUrl(task) {
 
 function calendarTasksForProfiles(profiles) {
   const tasks = [];
+  const seen = new Set();
   profiles.forEach(profile => {
     if (profile.repoConfirmed) return;
-    const add = (date, label, priority = '', time = '09:00', note = '') => {
+    const add = (date, label, priority = '', time = '09:00', note = '', activity = null) => {
       const key = localDateKey(date);
-      if (key) tasks.push({ key, label, priority, profile, time, note });
+      if (!key) return;
+      const identity = `${profile.sale.id}|${key}|${String(label || '').trim().toLowerCase()}`;
+      if (seen.has(identity)) return;
+      seen.add(identity);
+      tasks.push({ key, label, priority, profile, time, note, activity });
     };
+    const hasActivityLedger = (profile.activities || []).length > 0;
+    const pendingActivities = (profile.activities || []).filter(activity => activity.status === 'pending');
+    if (pendingActivities.length) {
+      pendingActivities.forEach(activity => {
+        const due = new Date(activity.due_at);
+        const time = Number.isNaN(due.getTime())
+          ? '09:00'
+          : `${String(due.getHours()).padStart(2, '0')}:${String(due.getMinutes()).padStart(2, '0')}`;
+        add(due, activity.title, ['high', 'critical'].includes(activity.priority) ? 'alert' : '', time, activity.note || '', activity);
+      });
+      return;
+    }
+    if (hasActivityLedger) return;
     add(profile.form.insurance_next_review_date, 'Verificar poliza', profile.policyProblem ? 'alert' : '');
     add(profile.form.gps_next_review_date, 'Verificar GPS', profile.gpsProblem ? 'alert' : '');
     profile.operations
-      .filter(operation => operation.follow_up_at && !String(operation.event_type || '').startsWith('proxima_revision_'))
+      .filter(operation => operation.follow_up_at && isOperatorAction(operation))
       .forEach(operation => add(
         operation.follow_up_at,
         operation.payload?.ops_next_action || operation.event_type || 'Seguimiento',
@@ -1927,6 +2152,59 @@ function calendarTasksForProfiles(profiles) {
       ));
   });
   return tasks.sort((a, b) => a.key.localeCompare(b.key) || a.label.localeCompare(b.label));
+}
+
+async function refreshCurrentCaseFile() {
+  if (!currentHistoryProfile?.sale?.id || !controls.opsHistoryDialog?.open) return;
+  const profile = await loadCaseFile(currentHistoryProfile.sale.id);
+  showOpsHistory(profile);
+}
+
+async function completeActivity(activity) {
+  if (!activity?.id || !session?.user) return;
+  const completionNote = window.prompt('Nota obligatoria: explica que gestion se completo y cual fue el resultado.');
+  if (!completionNote) return;
+  if (completionNote.trim().length < 12) throw new Error('La nota de cierre debe tener al menos 12 caracteres.');
+  const { error } = await supabase
+    .from('doc_activities')
+    .update({
+      status: 'completed',
+      completed_by: session.user.id,
+      completed_at: new Date().toISOString(),
+      note: `${activity.note ? `${activity.note}\n` : ''}Resultado de cierre: ${completionNote.trim()}`
+    })
+    .eq('id', activity.id);
+  if (error) throw error;
+  await Promise.all([loadOpsReport(), refreshCurrentCaseFile()]);
+  setCloudStatus(`Actividad completada: ${activity.title}. Quedo registrada con fecha, hora y usuario.`, 'good');
+}
+
+async function rescheduleActivity(activity) {
+  if (!activity?.id || !session?.user) return;
+  const current = new Date(activity.due_at);
+  const currentDate = Number.isNaN(current.getTime()) ? '' : localDateKey(current);
+  const date = window.prompt('Nueva fecha (YYYY-MM-DD)', currentDate);
+  if (!date) return;
+  const time = window.prompt('Nueva hora (HH:MM)', Number.isNaN(current.getTime()) ? '09:00' : `${String(current.getHours()).padStart(2, '0')}:${String(current.getMinutes()).padStart(2, '0')}`);
+  if (!time) return;
+  const reason = window.prompt('Motivo obligatorio de la reprogramacion');
+  if (!reason) return;
+  if (reason.trim().length < 12) throw new Error('El motivo de reprogramacion debe tener al menos 12 caracteres.');
+  const due = new Date(`${date}T${time}:00`);
+  if (Number.isNaN(due.getTime())) throw new Error('La nueva fecha u hora no es valida.');
+  const { error } = await supabase
+    .from('doc_activities')
+    .update({
+      status: 'pending',
+      due_at: due.toISOString(),
+      completed_by: null,
+      completed_at: null,
+      note: `${activity.note ? `${activity.note}\n` : ''}Motivo de reprogramacion: ${reason.trim()}`
+    })
+    .eq('id', activity.id);
+  if (error) throw error;
+  await Promise.all([loadOpsReport(), refreshCurrentCaseFile()]);
+  setCloudStatus(`Actividad reprogramada para ${date} ${time}. El cambio quedo auditado.`, 'good');
 }
 
 function renderOpsCalendar(profiles) {
@@ -1958,7 +2236,7 @@ function renderOpsCalendar(profiles) {
   }
   controls.opsCalendarAgenda.replaceChildren();
   const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
-  const visible = tasks.filter(task => task.key.startsWith(monthPrefix)).slice(0, 25);
+  const visible = tasks.filter(task => task.key.startsWith(monthPrefix));
   if (!visible.length) {
     const empty = document.createElement('p');
     empty.className = 'empty-history';
@@ -1976,7 +2254,7 @@ function renderOpsCalendar(profiles) {
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'secondary';
-    open.textContent = 'Abrir';
+    open.textContent = 'Actualizar control';
     open.addEventListener('click', () => openOpsSale(task.profile));
     const google = document.createElement('button');
     google.type = 'button';
@@ -1987,6 +2265,21 @@ function renderOpsCalendar(profiles) {
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
     });
     row.append(date, detail, open, google);
+    if (task.activity) {
+      const reschedule = document.createElement('button');
+      reschedule.type = 'button';
+      reschedule.className = 'secondary';
+      reschedule.textContent = 'Reprogramar';
+      reschedule.addEventListener('click', () => rescheduleActivity(task.activity).catch(error => setCloudStatus(error.message, 'error')));
+      row.append(reschedule);
+      if (!['insurance_review', 'gps_review'].includes(task.activity.activity_type)) {
+        const complete = document.createElement('button');
+        complete.type = 'button';
+        complete.textContent = 'Completar seguimiento';
+        complete.addEventListener('click', () => completeActivity(task.activity).catch(error => setCloudStatus(error.message, 'error')));
+        row.append(complete);
+      }
+    }
     controls.opsCalendarAgenda.append(row);
   });
 }
@@ -2115,9 +2408,9 @@ function renderOpsReport(profiles) {
     message.addEventListener('click', () => copyCustomerMessage(profile).catch(error => setCloudStatus(error.message, 'error')));
     const history = document.createElement('button');
     history.type = 'button';
-    history.className = 'secondary';
-    history.textContent = 'Historial';
-    history.addEventListener('click', () => showOpsHistory(profile));
+    history.className = '';
+    history.textContent = 'Ver ficha';
+    history.addEventListener('click', () => showCaseFileById(profile.sale.id));
     actions.append(open, history, message);
 
     row.append(identity, vehicle, status, actions);
@@ -2212,6 +2505,22 @@ async function loadOpsReport() {
     if ((data || []).length < pageSize) break;
   }
 
+  const activities = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from('doc_activities')
+      .select('id, sale_id, module, activity_type, title, status, priority, due_at, note, assigned_to, created_by, completed_by, completed_at, created_at, updated_at')
+      .order('due_at', { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) {
+      if (error.code === '42P01') break;
+      setCloudStatus(`No se pudo cargar la agenda operativa: ${error.message}`, 'error');
+      return;
+    }
+    activities.push(...(data || []));
+    if ((data || []).length < pageSize) break;
+  }
+
   const operatorIds = [...new Set(operations.map(operation => operation.created_by).filter(Boolean))];
   const operatorNames = new Map();
   for (let index = 0; index < operatorIds.length; index += pageSize) {
@@ -2230,13 +2539,51 @@ async function loadOpsReport() {
     if (!bySale.has(operation.sale_id)) bySale.set(operation.sale_id, []);
     bySale.get(operation.sale_id).push(operation);
   });
-  opsProfilesCache = sales.map(sale => buildOpsProfile(sale, bySale.get(sale.id) || []));
+  const activitiesBySale = new Map();
+  activities.forEach(activity => {
+    if (!activitiesBySale.has(activity.sale_id)) activitiesBySale.set(activity.sale_id, []);
+    activitiesBySale.get(activity.sale_id).push(activity);
+  });
+  opsProfilesCache = sales.map(sale => buildOpsProfile(sale, bySale.get(sale.id) || [], activitiesBySale.get(sale.id) || []));
   opsLoadedAt = new Date();
   renderOpsReport(opsProfilesCache);
 }
 
 function authHeaders() {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` };
+}
+
+async function connectGoogleCalendar() {
+  if (!session?.access_token) throw new Error('Debes entrar con un usuario autorizado.');
+  controls.connectGoogleCalendar.disabled = true;
+  if (controls.calendarConnectionStatus) {
+    controls.calendarConnectionStatus.textContent = 'Preparando enlace privado de calendario...';
+    controls.calendarConnectionStatus.className = 'status';
+  }
+  try {
+    const response = await fetch('/api/calendar/connect', { method: 'POST', headers: authHeaders() });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'No se pudo preparar el calendario.');
+    let copied = false;
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(result.feedUrl);
+        copied = true;
+      } catch (error) {
+        console.warn('El navegador no permitio copiar el enlace de calendario.', error);
+      }
+    }
+    if (!copied) window.prompt('Copia este enlace privado y pegalo en Google Calendar > Desde URL', result.feedUrl);
+    if (controls.calendarConnectionStatus) {
+      controls.calendarConnectionStatus.textContent = copied
+        ? 'Enlace privado copiado. En Google Calendar, pegalo en "Desde URL". Esta conexion es personal y no debe compartirse.'
+        : 'Google Calendar se abrio. Pega alli el enlace privado mostrado; no debes compartirlo.';
+      controls.calendarConnectionStatus.className = 'status good';
+    }
+    window.open(result.calendarSettingsUrl, '_blank', 'noopener,noreferrer');
+  } finally {
+    controls.connectGoogleCalendar.disabled = false;
+  }
 }
 
 function renderAdminUsers(users) {
@@ -2526,7 +2873,34 @@ function newSale() {
   setCloudStatus('Formulario limpio para una nueva venta. Completa los datos y envia al cliente cuando este listo.', 'good');
 }
 
-window.EasyCarCloud = { saveSale, saveInsuranceGpsIdentification, saveInsuranceGpsReview, checkDuplicateVin, scheduleAutoSave };
+function clearCurrentSale() {
+  setCurrentSale(null);
+}
+
+window.EasyCarCloud = {
+  saveSale,
+  saveInsuranceGpsIdentification,
+  saveInsuranceGpsReview,
+  checkDuplicateVin,
+  scheduleAutoSave,
+  openSale: loadSale,
+  clearCurrentSale
+};
+
+controls.opsHistoryEditSale?.addEventListener('click', () => {
+  const profile = currentHistoryProfile;
+  if (!profile) return;
+  controls.opsHistoryDialog?.close();
+  loadSale(profile.sale.id, { scrollTarget: 'clientSection' })
+    .catch(error => setCloudStatus(error.message, 'error'));
+});
+
+controls.opsHistoryEditControl?.addEventListener('click', () => {
+  const profile = currentHistoryProfile;
+  if (!profile) return;
+  controls.opsHistoryDialog?.close();
+  openOpsSale(profile);
+});
 
 if (!configured) {
   document.body.dataset.auth = 'signed-in';
@@ -2581,6 +2955,12 @@ if (!configured) {
     opsCalendarMonth = new Date(opsCalendarMonth.getFullYear(), opsCalendarMonth.getMonth() + 1, 1);
     renderOpsReport(opsProfilesCache);
   });
+  controls.connectGoogleCalendar?.addEventListener('click', () => connectGoogleCalendar().catch(error => {
+    if (controls.calendarConnectionStatus) {
+      controls.calendarConnectionStatus.textContent = error.message;
+      controls.calendarConnectionStatus.className = 'status warn';
+    }
+  }));
   controls.opsSearch.addEventListener('input', () => renderOpsReport(opsProfilesCache));
   controls.clearOpsSearch.addEventListener('click', () => {
     controls.opsSearch.value = '';
