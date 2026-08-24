@@ -311,26 +311,46 @@ async function createDocusealSubmission({ supabase, sale, sentBy }) {
     });
 
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || payload.message || 'DocuSeal request failed');
+    if (!response.ok) {
+      const err = new Error(payload.error || payload.message || 'DocuSeal request failed');
+      err.providerHttpStatus = response.status;
+      err.providerBody = payload;
+      throw err;
+    }
 
     submitter = Array.isArray(payload) ? payload[0] : payload.submitters?.[0] || payload;
     submissionId = String(submitter.submission_id || payload.id || '');
     submitterId = submitter.id ? String(submitter.id) : null;
-    if (!submissionId) throw new Error('DocuSeal did not return a submission ID');
+    if (!submissionId) {
+      const err = new Error('DocuSeal did not return a submission ID');
+      err.providerBody = payload;
+      throw err;
+    }
     if (!submitter.phone) {
-      throw new Error(`DocuSeal did not confirm a phone number for SMS. Check that the customer phone is valid: ${phone}`);
+      const err = new Error(`DocuSeal did not confirm a phone number for SMS. Check that the customer phone is valid: ${phone}`);
+      err.providerBody = payload;
+      throw err;
     }
     if (submitter.preferences?.send_sms === false) {
-      throw new Error('DocuSeal created the signature request, but SMS was not enabled by DocuSeal. Check that the EasyCar DocuSeal Pro account has SMS invitations enabled.');
+      const err = new Error('DocuSeal created the signature request, but SMS was not enabled by DocuSeal. Check that the EasyCar DocuSeal Pro account has SMS invitations enabled.');
+      err.providerBody = payload;
+      throw err;
     }
   } catch (error) {
+    const providerError = {
+      message: error.message || 'Unknown error',
+      http_status: error.providerHttpStatus ?? null,
+      response: error.providerBody ?? null,
+      failed_at: new Date().toISOString()
+    };
     const requestChanges = submissionId
       ? {
           provider_submission_id: submissionId,
           provider_submitter_id: submitterId,
-          status: 'sent'
+          status: 'sent',
+          provider_error: providerError
         }
-      : { status: 'failed' };
+      : { status: 'failed', provider_error: providerError };
     await supabase
       .from('doc_signing_requests')
       .update(requestChanges)
