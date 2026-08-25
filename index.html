@@ -79,6 +79,20 @@
     body[data-active-module="INSURANCE_GPS"] .repo-only,
     body[data-active-module="INSURANCE_GPS"] .recovery-only,
     body[data-active-module="INSURANCE_GPS"] .document-output { display: none !important; }
+    body:not([data-active-module="MECHANICAL"]) .mechanical-only { display: none !important; }
+    body[data-active-module="MECHANICAL"] .sale-operation-only,
+    body[data-active-module="MECHANICAL"] .not-voluntary,
+    body[data-active-module="MECHANICAL"] .voluntary-only,
+    body[data-active-module="MECHANICAL"] .repo-only,
+    body[data-active-module="MECHANICAL"] .recovery-only,
+    body[data-active-module="MECHANICAL"] .document-output { display: none !important; }
+    body:not([data-active-module="INTERVIEW"]) .interview-only { display: none !important; }
+    body[data-active-module="INTERVIEW"] .sale-operation-only,
+    body[data-active-module="INTERVIEW"] .not-voluntary,
+    body[data-active-module="INTERVIEW"] .voluntary-only,
+    body[data-active-module="INTERVIEW"] .repo-only,
+    body[data-active-module="INTERVIEW"] .recovery-only,
+    body[data-active-module="INTERVIEW"] .document-output { display: none !important; }
     label { display: grid; gap: 6px; color: #2f3b51; font-size: .82rem; font-weight: 700; text-transform: uppercase; }
     [hidden] { display: none !important; }
     input, select, textarea { width: 100%; min-height: 42px; border: 1px solid #bac5d6; border-radius: 6px; padding: 10px 11px; font: inherit; background: #fffdf3; color: var(--ink); }
@@ -518,6 +532,8 @@
       <div class="toolbar private-workspace">
         <p>Version directa para ventas. Elige el tipo de venta, llena una sola pantalla y el sistema prepara solo los documentos necesarios.</p>
         <button type="button" class="sale-operation-only" onclick="window.print()">Imprimir / guardar PDF</button>
+        <input type="file" id="markSignedPhysicalFile" class="sale-operation-only" accept="application/pdf,image/jpeg,image/png" hidden>
+        <button type="button" class="sale-operation-only secondary" id="markSignedPhysical">Marcar como firmada y notificar</button>
       </div>
       <div class="deal-mode private-workspace" aria-label="Tipo de venta">
         <strong>Tipo de venta</strong>
@@ -547,15 +563,15 @@
             <span>GPS Y SEGURO</span>
             <small>Poliza, GPS, GAP, siniestro, ubicacion y seguimiento.</small>
           </label>
-          <label class="mode-tab disabled">
-            <input type="radio" name="sale_type_choice" id="sale_module_interview" value="INTERVIEW" disabled>
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_module_interview" value="INTERVIEW">
             <span>ENTREVISTA</span>
-            <small>Reservado para llamada postventa y encuesta.</small>
+            <small>Llamada del dia siguiente: confirma referencias.</small>
           </label>
-          <label class="mode-tab disabled">
-            <input type="radio" name="sale_type_choice" id="sale_module_mechanical" value="MECHANICAL" disabled>
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_module_mechanical" value="MECHANICAL">
             <span>MECANICA</span>
-            <small>Reservado para reclamos y seguimiento mecanico.</small>
+            <small>Seguimiento del estado fisico y mecanico del vehiculo.</small>
           </label>
         </div>
         <input type="hidden" id="sale_type" value="BHPH">
@@ -614,6 +630,17 @@
           <section><h4>Historial de GPS</h4><div class="ops-history-timeline" id="opsHistoryGps"></div></section>
           <section><h4>Cambios en agenda y tareas</h4><div class="ops-history-timeline" id="opsHistoryActivityAudit"></div></section>
           <section><h4>Otras actividades del expediente</h4><div class="ops-history-timeline" id="opsHistoryOther"></div></section>
+        </div>
+      </dialog>
+      <dialog class="ops-history-dialog" id="customerCaseDialog">
+        <div class="ops-history-header">
+          <div><h3 id="customerCaseTitle">Ficha del cliente</h3><p id="customerCaseMeta"></p></div>
+          <div class="ops-history-actions">
+            <form method="dialog"><button type="submit" class="secondary" aria-label="Cerrar ficha de cliente">&times;</button></form>
+          </div>
+        </div>
+        <div class="ops-history-body">
+          <section><h4>Ventas de este cliente</h4><div id="customerCaseSales"></div></section>
         </div>
       </dialog>
       <form id="saleForm" class="grid private-workspace">
@@ -956,6 +983,58 @@
         <div class="process-panel insurance-only" id="operationHistoryPanel">
           <h4>Historial de verificaciones y seguimiento</h4>
           <div id="operationHistory" class="ops-results"><p class="empty-history">Guarda o abre un expediente para ver su historial auditable.</p></div>
+        </div>
+
+        <div class="section-title mechanical-only" id="mechanicalSection">ESTADO MECANICO DEL VEHICULO</div>
+        <div class="storage-note mechanical-only">Usa el mismo cliente, VIN y vehiculo del expediente. Cada revision queda registrada con fecha, hora y usuario.</div>
+        <label class="mechanical-only">Estatus mecanico
+          <select id="mechanical_status">
+            <option value=""></option>
+            <option>Sin problemas</option>
+            <option>Requiere atencion</option>
+            <option>En taller</option>
+            <option>Reparado</option>
+            <option>No arranca</option>
+          </select>
+        </label>
+        <label class="mechanical-only">Millas al momento de la revision <input id="mechanical_mileage_at_review" inputmode="numeric"></label>
+        <label class="full mechanical-only">Problemas encontrados <textarea id="mechanical_issues_found" placeholder="Motor, transmision, frenos, luces, llantas, etc."></textarea></label>
+        <label class="full mechanical-only">Accion tomada <textarea id="mechanical_action_taken" placeholder="Se envio a taller, se ordeno pieza, se resolvio en sitio, etc."></textarea></label>
+        <label class="mechanical-only">Proxima revision mecanica <input id="mechanical_next_review_date" type="date"></label>
+        <label class="full mechanical-only">Notas <textarea id="mechanical_notes" placeholder="Explica que se reviso y que queda pendiente (minimo 12 caracteres)"></textarea></label>
+        <div class="ops-action mechanical-only">
+          <button type="button" id="saveMechanicalReview">Registrar revision mecanica</button>
+          <div id="mechanicalStatus" class="status">Cada revision requiere estatus y nota para dejar evidencia con usuario, dia y hora.</div>
+        </div>
+
+        <div class="section-title interview-only" id="interviewSection">ENTREVISTA POSTVENTA</div>
+        <div class="storage-note interview-only">Llamada del dia siguiente a la venta: confirma con el cliente sus referencias laborales y personales.</div>
+        <label class="interview-only">Empleador <input id="employer_name"></label>
+        <label class="interview-only">Telefono del empleador <input id="employer_phone"></label>
+        <label class="interview-only">Puesto <input id="employer_position"></label>
+        <label class="interview-only">Tiempo en el empleo <input id="employer_length" placeholder="Ej. 2 anos, 6 meses"></label>
+        <label class="interview-only">Referencia personal 1 - nombre <input id="personal_ref1_name"></label>
+        <label class="interview-only">Referencia personal 1 - telefono <input id="personal_ref1_phone"></label>
+        <label class="interview-only">Referencia personal 1 - relacion <input id="personal_ref1_relationship"></label>
+        <label class="interview-only">Referencia personal 2 - nombre <input id="personal_ref2_name"></label>
+        <label class="interview-only">Referencia personal 2 - telefono <input id="personal_ref2_phone"></label>
+        <label class="interview-only">Referencia personal 2 - relacion <input id="personal_ref2_relationship"></label>
+        <label class="interview-only">Fecha de la llamada <input id="interview_call_date" type="date"></label>
+        <label class="interview-only">Resultado de la llamada
+          <select id="interview_call_result">
+            <option value=""></option>
+            <option>Confirmado</option>
+            <option>No contesta</option>
+            <option>Numero equivocado</option>
+            <option>Referencias no confirman</option>
+            <option>Cliente rechaza verificar</option>
+          </select>
+        </label>
+        <label class="interview-only">Proxima accion (si aplica) <input id="interview_next_action_date" type="date"></label>
+        <label class="full interview-only">Notas <textarea id="interview_notes" placeholder="Explica que se confirmo y que queda pendiente (minimo 12 caracteres)"></textarea></label>
+        <div class="ops-action interview-only">
+          <button type="button" id="saveInterviewCall">Registrar llamada de entrevista</button>
+          <div id="interviewStatus" class="status">Cada llamada requiere resultado y nota para dejar evidencia con usuario, dia y hora.</div>
         </div>
 
         <div class="section-title sale-operation-only">Venta y pago</div>
@@ -1387,14 +1466,18 @@
       BANCO: ['pickup', 'card'],
       VOLUNTARY: ['voluntary_notice', 'voluntary_condition'],
       REPO: ['repo_notice', 'repo_sale_notice'],
-      INSURANCE_GPS: []
+      INSURANCE_GPS: [],
+      MECHANICAL: [],
+      INTERVIEW: []
     };
     const MODE_COPY = {
       BHPH: 'BHPH: se generan todos los documentos del paquete.',
       BANCO: 'BANCO: se generan solo Financiamiento de inicial y Credit Card Authorization.',
       VOLUNTARY: 'ENTREGA VOLUNTARIA: identifica cliente, vehiculo, fechas, cuotas, payoff, condicion y 4 fotos.',
       REPO: 'REPOSICION: genera aviso de reposesion y aviso de venta privada con fecha minima de 10 dias.',
-      INSURANCE_GPS: 'GPS Y SEGURO: usa el mismo cliente, VIN y vehiculo del expediente para controlar poliza, GPS, GAP y siniestros.'
+      INSURANCE_GPS: 'GPS Y SEGURO: usa el mismo cliente, VIN y vehiculo del expediente para controlar poliza, GPS, GAP y siniestros.',
+      MECHANICAL: 'MECANICA: usa el mismo cliente, VIN y vehiculo del expediente para registrar el estado fisico y mecanico del carro.',
+      INTERVIEW: 'ENTREVISTA: llamada del dia siguiente a la venta para confirmar referencias laborales y personales del cliente.'
     };
     const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO';
     const buildSupabaseUrl = '%VITE_SUPABASE_URL%';
@@ -1411,6 +1494,8 @@
       'record_loaded_date','vehicle_loaded_date','insurance_first_review_date','gps_first_review_date',
       'insurance_provider','insurance_policy_number','insurance_agency_phone','insurance_issue_date','insurance_expiration_date','insurance_customer_role','insurance_policyholder_name','insurance_policyholder_relationship','insurance_policyholder_address','insurance_driver_listed','insurance_driver_name_on_policy','insurance_driver_address','insurance_address_review_status','insurance_gps_address_match','insurance_address_follow_up_notes','insurance_address_matches','insurance_policy_address','insurance_party_schema_version','insurance_cancelled_since','insurance_status','insurance_verified_date','insurance_next_review_date','insurance_payments_current','insurance_comprehensive','insurance_collision','insurance_lienholder','insurance_status_reason','insurance_follow_up_path',
       'gps_imei','gps_provider','gps_device_status','gps_battery_connected','gps_last_mileage','gps_last_location','gps_location_jurisdiction','gps_last_seen_at','gps_overnight_location','gps_status_reason','gps_next_review_date','gps_monthly_miles','gps_monthly_miles_status',
+      'mechanical_status','mechanical_mileage_at_review','mechanical_issues_found','mechanical_action_taken','mechanical_next_review_date','mechanical_notes',
+      'employer_name','employer_phone','employer_position','employer_length','personal_ref1_name','personal_ref1_phone','personal_ref1_relationship','personal_ref2_name','personal_ref2_phone','personal_ref2_relationship','interview_call_date','interview_call_result','interview_next_action_date','interview_notes',
       'recovery_event_type','recovery_event_date','recovery_last_location','recovery_policy_active_on_event','recovery_repo_confirmed','recovery_damage_notes','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_claim_number','gap_opened_date','insurance_claim_last_call_date','gap_last_call_date','claim_pending_action','gap_missing_documents','ops_action_type','ops_contact_result','ops_next_action','ops_next_action_date','ops_next_action_time','insurance_gps_notes',
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
       'conditional_delivery_date','conditional_deadline',
@@ -1449,17 +1534,21 @@
       if (normalized) field.value = normalized;
       return normalized;
     }
+    const STANDALONE_MODULES = ['INSURANCE_GPS', 'MECHANICAL', 'INTERVIEW'];
+    function modeCopyKey() {
+      return STANDALONE_MODULES.includes(activeModule()) ? activeModule() : currentSaleType();
+    }
     function visibleDocs() {
-      const mode = activeModule() === 'INSURANCE_GPS' ? 'INSURANCE_GPS' : currentSaleType();
-      const order = DOC_SETS[mode] || DOC_SETS.BHPH;
+      const order = DOC_SETS[modeCopyKey()] || DOC_SETS.BHPH;
       return order.map(key => allDocs().find(doc => doc.key === key)).filter(Boolean);
     }
     function setActiveModule(module) {
-      const normalized = module === 'INSURANCE_GPS' ? 'INSURANCE_GPS' : 'SALE';
+      const normalized = STANDALONE_MODULES.includes(module) ? module : 'SALE';
       if ($('active_module')) $('active_module').value = normalized;
       document.body.dataset.activeModule = normalized;
       if (normalized === 'INSURANCE_GPS' && $('sale_module_insurance')) $('sale_module_insurance').checked = true;
-      if ($('modeSummary')) $('modeSummary').textContent = MODE_COPY[normalized === 'INSURANCE_GPS' ? 'INSURANCE_GPS' : currentSaleType()];
+      if (normalized === 'MECHANICAL' && $('sale_module_mechanical')) $('sale_module_mechanical').checked = true;
+      if (normalized === 'INTERVIEW' && $('sale_module_interview')) $('sale_module_interview').checked = true;
       renderDocs();
     }
     function setSaleType(type) {
@@ -2263,7 +2352,7 @@
       calculatePickupSchedule();
       updateRepoCalculations();
       const docsToRender = visibleDocs();
-      if ($('modeSummary')) $('modeSummary').textContent = MODE_COPY[activeModule() === 'INSURANCE_GPS' ? 'INSURANCE_GPS' : currentSaleType()];
+      if ($('modeSummary')) $('modeSummary').textContent = MODE_COPY[modeCopyKey()];
       document.getElementById('docNav').innerHTML = docsToRender.map((doc, i) => `<a href="#doc-${doc.key}">${i + 1}. ${DOC_TITLES[doc.key]}</a>`).join('');
       document.getElementById('docs').innerHTML = docsToRender.map((doc, i) => {
         let firstParagraph = true;
@@ -2604,6 +2693,50 @@
       status.textContent = message;
       status.className = `status ${className}`.trim();
     }
+    function setMechanicalStatus(message, className = '') {
+      const status = $('mechanicalStatus');
+      if (!status) return;
+      status.textContent = message;
+      status.className = `status ${className}`.trim();
+    }
+    async function saveMechanicalReviewHandler() {
+      const button = $('saveMechanicalReview');
+      if (button) button.disabled = true;
+      setMechanicalStatus('Registrando revision mecanica...', '');
+      try {
+        const formData = collectFormData();
+        if (!window.EasyCarCloud) throw new Error('Inicia sesion con un usuario autorizado para guardar en el expediente central.');
+        const sale = await window.EasyCarCloud.saveMechanicalReview(formData);
+        if (!sale) throw new Error('Inicia sesion con un usuario autorizado para guardar en el expediente central.');
+        setMechanicalStatus(`Revision mecanica registrada. ID: ${sale.id.slice(0, 8)}`, 'good');
+      } catch (error) {
+        setMechanicalStatus(`No se pudo registrar la revision: ${error.message || 'revisa Supabase'}`, 'warn');
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+    function setInterviewStatus(message, className = '') {
+      const status = $('interviewStatus');
+      if (!status) return;
+      status.textContent = message;
+      status.className = `status ${className}`.trim();
+    }
+    async function saveInterviewCallHandler() {
+      const button = $('saveInterviewCall');
+      if (button) button.disabled = true;
+      setInterviewStatus('Registrando llamada de entrevista...', '');
+      try {
+        const formData = collectFormData();
+        if (!window.EasyCarCloud) throw new Error('Inicia sesion con un usuario autorizado para guardar en el expediente central.');
+        const sale = await window.EasyCarCloud.saveInterviewCall(formData);
+        if (!sale) throw new Error('Inicia sesion con un usuario autorizado para guardar en el expediente central.');
+        setInterviewStatus(`Llamada registrada. ID: ${sale.id.slice(0, 8)}`, 'good');
+      } catch (error) {
+        setInterviewStatus(`No se pudo registrar la llamada: ${error.message || 'revisa Supabase'}`, 'warn');
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
     async function saveSale() {
       const button = $('saveSale');
       if (button) button.disabled = true;
@@ -2787,6 +2920,10 @@
     $('sale_type_voluntary').addEventListener('change', () => setSaleType('VOLUNTARY'));
     $('sale_type_repo').addEventListener('change', () => setSaleType('REPO'));
     $('sale_module_insurance').addEventListener('change', () => setActiveModule('INSURANCE_GPS'));
+    $('sale_module_mechanical').addEventListener('change', () => setActiveModule('MECHANICAL'));
+    $('sale_module_interview').addEventListener('change', () => setActiveModule('INTERVIEW'));
+    $('saveMechanicalReview')?.addEventListener('click', saveMechanicalReviewHandler);
+    $('saveInterviewCall')?.addEventListener('click', saveInterviewCallHandler);
     $('salesList').addEventListener('click', event => {
       const button = event.target.closest('[data-load-sale]');
       if (button) loadLocalSale(button.dataset.loadSale);

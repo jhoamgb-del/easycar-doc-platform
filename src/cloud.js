@@ -27,6 +27,8 @@ const controls = {
   newSale: byId('newCloudSale'),
   sendSignature: byId('sendForSignature'),
   sendInsuranceSms: byId('sendInsuranceSms'),
+  markSignedPhysical: byId('markSignedPhysical'),
+  markSignedPhysicalFile: byId('markSignedPhysicalFile'),
   badge: byId('cloudSaleBadge'),
   recent: byId('cloudRecent'),
   salesList: byId('cloudSalesList'),
@@ -69,6 +71,10 @@ const controls = {
   opsHistoryOther: byId('opsHistoryOther'),
   opsHistoryEditSale: byId('opsHistoryEditSale'),
   opsHistoryEditControl: byId('opsHistoryEditControl'),
+  customerCaseDialog: byId('customerCaseDialog'),
+  customerCaseTitle: byId('customerCaseTitle'),
+  customerCaseMeta: byId('customerCaseMeta'),
+  customerCaseSales: byId('customerCaseSales'),
   opsCalendarTitle: byId('opsCalendarTitle'),
   opsCalendarGrid: byId('opsCalendarGrid'),
   opsCalendarAgenda: byId('opsCalendarAgenda'),
@@ -1054,6 +1060,91 @@ async function saveInsuranceGpsIdentification(formData) {
   return sale;
 }
 
+function mechanicalPayload(formData) {
+  return {
+    customer_name: [formData.first_name, formData.middle_name, formData.last_name, formData.second_last_name].filter(Boolean).join(' '),
+    vehicle: [formData.vehicle_year, formData.vehicle_make, formData.vehicle_model].filter(Boolean).join(' '),
+    vin: formData.vin || '',
+    stock_number: formData.stock_number || '',
+    mechanical_status: formData.mechanical_status || '',
+    mechanical_mileage_at_review: formData.mechanical_mileage_at_review || '',
+    mechanical_issues_found: formData.mechanical_issues_found || '',
+    mechanical_action_taken: formData.mechanical_action_taken || '',
+    mechanical_notes: formData.mechanical_notes || ''
+  };
+}
+
+async function saveMechanicalReview(formData) {
+  if (!supabase || !session?.user) return null;
+  const hasCaseIdentity = [formData.first_name, formData.last_name, formData.vin, formData.stock_number]
+    .some(value => String(value || '').trim());
+  if (!hasCaseIdentity) throw new Error('Identifica al cliente o al vehiculo antes de registrar la revision mecanica.');
+  if (!formData.mechanical_status) throw new Error('Selecciona el estatus mecanico antes de registrar.');
+  if (String(formData.mechanical_notes || '').trim().length < 12) {
+    throw new Error('La nota debe explicar que se reviso y que queda pendiente (minimo 12 caracteres).');
+  }
+  const payload = mechanicalPayload(formData);
+  const rows = [{
+    module: 'mechanical',
+    event_type: 'revision_mecanica',
+    status: formData.mechanical_status,
+    follow_up_at: formData.mechanical_next_review_date || null,
+    note: formData.mechanical_notes,
+    payload,
+    created_by: session.user.id
+  }];
+  const { sale } = await saveInsuranceGpsEventAtomically(formData, rows);
+  await loadSaleOperationHistory(sale.id);
+  await loadArchive();
+  return sale;
+}
+
+function interviewPayload(formData) {
+  return {
+    customer_name: [formData.first_name, formData.middle_name, formData.last_name, formData.second_last_name].filter(Boolean).join(' '),
+    employer_name: formData.employer_name || '',
+    employer_phone: formData.employer_phone || '',
+    employer_position: formData.employer_position || '',
+    employer_length: formData.employer_length || '',
+    personal_ref1_name: formData.personal_ref1_name || '',
+    personal_ref1_phone: formData.personal_ref1_phone || '',
+    personal_ref1_relationship: formData.personal_ref1_relationship || '',
+    personal_ref2_name: formData.personal_ref2_name || '',
+    personal_ref2_phone: formData.personal_ref2_phone || '',
+    personal_ref2_relationship: formData.personal_ref2_relationship || '',
+    interview_call_date: formData.interview_call_date || '',
+    interview_call_result: formData.interview_call_result || ''
+  };
+}
+
+async function saveInterviewCall(formData) {
+  if (!supabase || !session?.user) return null;
+  const hasCaseIdentity = [formData.first_name, formData.last_name, formData.vin, formData.stock_number]
+    .some(value => String(value || '').trim());
+  if (!hasCaseIdentity) throw new Error('Identifica al cliente o al vehiculo antes de registrar la llamada de entrevista.');
+  if (!formData.interview_call_result) throw new Error('Selecciona el resultado de la llamada antes de registrar.');
+  if (String(formData.interview_notes || '').trim().length < 12) {
+    throw new Error('La nota debe explicar que se confirmo y que queda pendiente (minimo 12 caracteres).');
+  }
+  const payload = interviewPayload(formData);
+  const rows = [{
+    // El valor de modulo en base de datos es 'survey' (asi quedo reservado en el
+    // CHECK constraint desde antes de construir este modulo); la UI y el campo
+    // active_module usan 'INTERVIEW', pero el registro de auditoria debe usar 'survey'.
+    module: 'survey',
+    event_type: 'llamada_confirmacion',
+    status: formData.interview_call_result,
+    follow_up_at: formData.interview_next_action_date || null,
+    note: formData.interview_notes,
+    payload,
+    created_by: session.user.id
+  }];
+  const { sale } = await saveInsuranceGpsEventAtomically(formData, rows);
+  await loadSaleOperationHistory(sale.id);
+  await loadArchive();
+  return sale;
+}
+
 async function loadSale(id, { module = '', scrollTarget = 'clientSection' } = {}) {
   const { data, error } = await supabase.from('doc_sales').select('*').eq('id', id).single();
   if (error) throw error;
@@ -1148,7 +1239,7 @@ async function loadRecentSales() {
   if (!supabase || !session?.user) return;
   const { data, error } = await supabase
     .from('doc_sales')
-    .select('id, customer_name, vehicle_description, status, transaction_date')
+    .select('id, customer_id, customer_name, vehicle_description, status, transaction_date')
     .order('created_at', { ascending: false })
     .limit(12);
   if (error) {
@@ -1178,7 +1269,7 @@ async function loadRecentSales() {
     open.type = 'button';
     open.className = 'secondary';
     open.textContent = 'Ver ficha';
-    open.addEventListener('click', () => showCaseFileById(sale.id));
+    open.addEventListener('click', () => showCustomerCaseFile(sale.customer_id, sale.id));
     row.append(customer, vehicle, status, open);
     controls.salesList.append(row);
   });
@@ -1192,6 +1283,16 @@ async function openArchivedDocument(path) {
   window.open(data.signedUrl, '_blank', 'noopener');
 }
 
+function groupSalesByCustomer(sales) {
+  const groups = new Map();
+  sales.forEach(sale => {
+    const key = sale.customer_id || `sale-${sale.id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(sale);
+  });
+  return [...groups.values()];
+}
+
 function renderArchiveResults(sales) {
   controls.archiveResults.replaceChildren();
   if (!sales.length) {
@@ -1202,7 +1303,9 @@ function renderArchiveResults(sales) {
     return;
   }
 
-  sales.forEach(sale => {
+  groupSalesByCustomer(sales).forEach(group => {
+    const primary = group[0];
+    const multi = group.length > 1;
     const row = document.createElement('details');
     row.className = 'archive-row';
 
@@ -1211,40 +1314,44 @@ function renderArchiveResults(sales) {
 
     const customer = document.createElement('div');
     const name = document.createElement('strong');
-    name.textContent = sale.customer_name || 'Cliente sin nombre';
+    name.textContent = primary.customer_name || 'Cliente sin nombre';
     const details = document.createElement('div');
     details.className = 'archive-meta';
     details.textContent = [
-      sale.customer_email,
-      sale.customer_phone,
-      sale.contract_number ? `Contrato ${sale.contract_number}` : ''
+      primary.customer_email,
+      primary.customer_phone,
+      multi ? `${group.length} ventas` : (primary.contract_number ? `Contrato ${primary.contract_number}` : '')
     ].filter(Boolean).join(' | ');
     customer.append(name, details);
 
     const vehicle = document.createElement('div');
     const vehicleName = document.createElement('strong');
-    vehicleName.textContent = sale.vehicle_description || 'Vehiculo sin completar';
+    vehicleName.textContent = multi
+      ? group.map(sale => sale.vehicle_description || 'Vehiculo sin completar').join(' + ')
+      : (primary.vehicle_description || 'Vehiculo sin completar');
     const vehicleMeta = document.createElement('div');
     vehicleMeta.className = 'archive-meta';
-    vehicleMeta.textContent = [
-      sale.vin ? `VIN ${sale.vin}` : '',
-      sale.stock_number ? `Stock ${sale.stock_number}` : ''
+    vehicleMeta.textContent = multi ? '' : [
+      primary.vin ? `VIN ${primary.vin}` : '',
+      primary.stock_number ? `Stock ${primary.stock_number}` : ''
     ].filter(Boolean).join(' | ');
     vehicle.append(vehicleName, vehicleMeta);
 
     const status = document.createElement('div');
     status.className = 'archive-meta';
-    status.textContent = `${saleTypeLabel(sale.form_data)} | ${statusLabel(sale.status)}${sale.transaction_date ? ` | ${formatDateDisplay(sale.transaction_date)}` : ''}`;
+    status.textContent = multi
+      ? `${group.length} expedientes`
+      : `${saleTypeLabel(primary.form_data)} | ${statusLabel(primary.status)}${primary.transaction_date ? ` | ${formatDateDisplay(primary.transaction_date)}` : ''}`;
 
     const expanded = document.createElement('div');
     expanded.className = 'archive-expanded';
     const docs = document.createElement('div');
     docs.className = 'archive-docs';
-    const documents = sale.doc_sale_documents || [];
+    const documents = group.flatMap(sale => sale.doc_sale_documents || []);
     if (!documents.length) {
       const pending = document.createElement('span');
       pending.className = 'archive-meta';
-      pending.textContent = sale.status === 'signed_digital'
+      pending.textContent = group.some(sale => sale.status === 'signed_digital')
         ? 'Firmado, pendiente de archivo PDF'
         : 'Aun no hay PDF firmado archivado';
       docs.append(pending);
@@ -1263,13 +1370,18 @@ function renderArchiveResults(sales) {
     open.type = 'button';
     open.className = 'secondary';
     open.textContent = 'Ver ficha completa';
-    open.addEventListener('click', () => showCaseFileById(sale.id));
-    const edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'secondary';
-    edit.textContent = 'Editar venta';
-    edit.addEventListener('click', () => loadSale(sale.id, { scrollTarget: 'clientSection' }).catch(error => setCloudStatus(error.message, 'error')));
-    docs.prepend(open, edit);
+    open.addEventListener('click', () => showCustomerCaseFile(primary.customer_id, primary.id));
+    docs.prepend(open);
+
+    if (!multi) {
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'secondary';
+      edit.textContent = 'Editar venta';
+      edit.addEventListener('click', () => loadSale(primary.id, { scrollTarget: 'clientSection' }).catch(error => setCloudStatus(error.message, 'error')));
+      docs.insertBefore(edit, docs.children[1] || null);
+    }
+
     summary.append(customer, vehicle, status);
     expanded.append(docs);
     row.append(summary, expanded);
@@ -1285,13 +1397,13 @@ async function loadArchive() {
   for (let offset = 0; ; offset += pageSize) {
     let query = supabase
       .from('doc_sales')
-      .select('id, customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at, doc_sale_documents(id, document_type, storage_path, original_name, created_at)')
+      .select('id, customer_id, customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at, doc_sale_documents(id, document_type, storage_path, original_name, created_at)')
       .order('created_at', { ascending: false })
       .range(offset, offset + pageSize - 1);
     if (term) {
       const safeTerm = term.replace(/[%_,]/g, ' ');
       const pattern = `%${safeTerm}%`;
-      query = query.or(`customer_name.ilike.${pattern},customer_email.ilike.${pattern},customer_phone.ilike.${pattern},vin.ilike.${pattern},stock_number.ilike.${pattern},contract_number.ilike.${pattern}`);
+      query = query.or(`customer_name.ilike.${pattern},customer_email.ilike.${pattern},customer_phone.ilike.${pattern},vehicle_description.ilike.${pattern},vin.ilike.${pattern},stock_number.ilike.${pattern},contract_number.ilike.${pattern}`);
     }
     const { data, error } = await query;
     if (error) {
@@ -1472,6 +1584,14 @@ function latestOperation(operations = []) {
 
 function latestOperatorOperation(operations = []) {
   return latestOperation(operations.filter(isOperatorAction));
+}
+
+function latestMechanicalReview(operations = []) {
+  return latestOperation(operations.filter(operation => operation.module === 'mechanical'));
+}
+
+function latestInterviewCall(operations = []) {
+  return latestOperation(operations.filter(operation => operation.module === 'survey'));
 }
 
 function buildOpsProfile(sale, operations = [], activities = []) {
@@ -2001,6 +2121,96 @@ function showCaseFileById(saleId) {
     .catch(error => setCloudStatus(`No se pudo abrir la ficha: ${error.message}`, 'error'));
 }
 
+async function loadCustomerSales(customerId) {
+  const [{ data: customer, error: customerError }, { data: sales, error: salesError }] = await Promise.all([
+    supabase.from('doc_customers').select('id, full_name, email, phone').eq('id', customerId).maybeSingle(),
+    supabase
+      .from('doc_sales')
+      .select('id, customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at')
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false })
+  ]);
+  if (customerError) throw customerError;
+  if (salesError) throw salesError;
+  return { customer, sales: sales || [] };
+}
+
+function renderCustomerCaseSales(sales) {
+  if (!controls.customerCaseSales) return;
+  controls.customerCaseSales.replaceChildren();
+  sales.forEach(sale => {
+    const row = document.createElement('div');
+    row.className = 'archive-row';
+    const summary = document.createElement('div');
+    summary.className = 'archive-summary';
+
+    const vehicle = document.createElement('div');
+    const vehicleName = document.createElement('strong');
+    vehicleName.textContent = sale.vehicle_description || 'Vehiculo sin completar';
+    const vehicleMeta = document.createElement('div');
+    vehicleMeta.className = 'archive-meta';
+    vehicleMeta.textContent = [
+      sale.vin ? `VIN ${sale.vin}` : '',
+      sale.stock_number ? `Stock ${sale.stock_number}` : ''
+    ].filter(Boolean).join(' | ');
+    vehicle.append(vehicleName, vehicleMeta);
+
+    const status = document.createElement('div');
+    status.className = 'archive-meta';
+    status.textContent = `${saleTypeLabel(sale.form_data)} | ${statusLabel(sale.status)}${sale.transaction_date ? ` | ${formatDateDisplay(sale.transaction_date)}` : ''}`;
+
+    const actions = document.createElement('div');
+    actions.className = 'archive-docs';
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'secondary';
+    open.textContent = 'Ver ficha de esta venta';
+    open.addEventListener('click', () => {
+      controls.customerCaseDialog.close();
+      showCaseFileById(sale.id);
+    });
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'secondary';
+    edit.textContent = 'Editar venta';
+    edit.addEventListener('click', () => {
+      controls.customerCaseDialog.close();
+      loadSale(sale.id, { scrollTarget: 'clientSection' }).catch(error => setCloudStatus(error.message, 'error'));
+    });
+    actions.append(open, edit);
+
+    summary.append(vehicle, status, actions);
+    row.append(summary);
+    controls.customerCaseSales.append(row);
+  });
+}
+
+async function showCustomerCaseFile(customerId, fallbackSaleId) {
+  if (!customerId) {
+    if (fallbackSaleId) showCaseFileById(fallbackSaleId);
+    return;
+  }
+  setCloudStatus('Abriendo ficha del cliente...', '');
+  try {
+    const { customer, sales } = await loadCustomerSales(customerId);
+    if (sales.length <= 1) {
+      const only = sales[0];
+      if (only) return showCaseFileById(only.id);
+      if (fallbackSaleId) return showCaseFileById(fallbackSaleId);
+      setCloudStatus('No se encontraron ventas para este cliente.', 'error');
+      return;
+    }
+    if (!controls.customerCaseDialog) return;
+    controls.customerCaseTitle.textContent = customer?.full_name || sales[0]?.customer_name || 'Cliente sin nombre';
+    controls.customerCaseMeta.textContent = [customer?.email, customer?.phone].filter(Boolean).join(' | ') || 'Sin contacto registrado';
+    renderCustomerCaseSales(sales);
+    controls.customerCaseDialog.showModal();
+    setCloudStatus(`Ficha del cliente abierta. ${sales.length} ventas encontradas.`, 'good');
+  } catch (error) {
+    setCloudStatus(`No se pudo abrir la ficha del cliente: ${error.message}`, 'error');
+  }
+}
+
 function showOpsHistory(profile) {
   if (!controls.opsHistoryDialog) return;
   currentHistoryProfile = profile;
@@ -2022,17 +2232,25 @@ function showOpsHistory(profile) {
   controls.opsHistoryAction.textContent = primaryOpsAction(profile);
   controls.opsHistoryDue.textContent = `Proxima fecha: ${nextOpsDueText(profile)}`;
   controls.opsHistorySeverity.textContent = severityLabel;
+  const latestInterview = latestInterviewCall(profile.allOperations || []);
   const clientFacts = [
     ['Cliente', `Nacimiento: ${profile.form.customer_birth_date ? formatDateDisplay(profile.form.customer_birth_date) : 'pendiente'} | Telefono: ${profile.sale.customer_phone || 'sin telefono'}`],
     ['Venta', `${saleTypeLabel(profile.form)} | ${profile.sale.transaction_date ? formatDateDisplay(profile.sale.transaction_date) : 'sin fecha'} | Contrato ${profile.sale.contract_number || 'sin numero'}`],
     ['Contacto', `${profile.sale.customer_email || 'sin email'} | ${profile.sale.customer_phone || 'sin telefono'}`],
-    ['Condiciones de pago', paymentTerms]
+    ['Condiciones de pago', paymentTerms],
+    ['Entrevista / referencias', latestInterview
+      ? `${latestInterview.status || 'Registrado'} | ${new Date(latestInterview.created_at).toLocaleString('en-US')}`
+      : 'Sin llamada de confirmacion registrada']
   ];
+  const latestMechanical = latestMechanicalReview(profile.allOperations || []);
   const vehicleFacts = [
     ['Vehiculo', profile.sale.vehicle_description || 'sin completar'],
     ['VIN', profile.sale.vin || 'sin registrar'],
     ['Stock', profile.sale.stock_number || 'sin registrar'],
-    ['Carga del expediente', profile.sale.created_at ? new Date(profile.sale.created_at).toLocaleString('en-US') : 'sin fecha']
+    ['Carga del expediente', profile.sale.created_at ? new Date(profile.sale.created_at).toLocaleString('en-US') : 'sin fecha'],
+    ['Ultima revision mecanica', latestMechanical
+      ? `${latestMechanical.status || 'Registrado'} | ${new Date(latestMechanical.created_at).toLocaleString('en-US')}`
+      : 'Sin revision registrada']
   ];
   const insuranceFacts = [
     ['Seguro', `${profile.form.insurance_status || 'sin verificar'} | Poliza ${profile.form.insurance_policy_number || 'sin numero'} | Vence ${profile.form.insurance_expiration_date ? formatDateDisplay(profile.form.insurance_expiration_date) : 'sin fecha'}`],
@@ -2832,6 +3050,67 @@ async function sendInsuranceSms() {
   setCloudStatus(result.message || 'SMS procesado.', result.delivery === 'sent' ? 'good' : '');
 }
 
+const PHYSICAL_SIGNATURE_MAX_BYTES = 25 * 1024 * 1024;
+const PHYSICAL_SIGNATURE_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+
+async function markSignedPhysicalAndNotify(file) {
+  if (!supabase || !session?.user) throw new Error('Debes entrar con un usuario autorizado.');
+  if (!currentSaleId) throw new Error('Guarda o abre primero el expediente central.');
+  if (!file) throw new Error('Selecciona el documento firmado (PDF, JPG o PNG).');
+  if (!PHYSICAL_SIGNATURE_MIME_TYPES.includes(file.type)) throw new Error('El archivo debe ser PDF, JPG o PNG.');
+  if (file.size > PHYSICAL_SIGNATURE_MAX_BYTES) throw new Error('El archivo no puede superar 25 MB.');
+
+  const saleId = currentSaleId;
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-') || 'documento-firmado';
+  const storagePath = `${saleId}/physical/${Date.now()}-${safeName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('easycar-documents')
+    .upload(storagePath, file, { contentType: file.type, upsert: false });
+  if (uploadError) throw uploadError;
+
+  const { error: documentError } = await supabase.from('doc_sale_documents').insert({
+    sale_id: saleId,
+    document_type: 'signed_physical',
+    storage_path: storagePath,
+    original_name: file.name,
+    mime_type: file.type,
+    size_bytes: file.size,
+    uploaded_by: session.user.id
+  });
+  if (documentError) throw documentError;
+
+  const { error: saleError } = await supabase
+    .from('doc_sales')
+    .update({ status: 'signed_physical', signature_method: 'physical' })
+    .eq('id', saleId);
+  if (saleError) throw saleError;
+
+  const { error: operationError } = await supabase.from('doc_sale_operations').insert({
+    sale_id: saleId,
+    module: 'bhph',
+    event_type: 'Venta firmada fisicamente',
+    status: 'Completado',
+    note: `Documento firmado subido: ${file.name}`,
+    payload: { storage_path: storagePath },
+    created_by: session.user.id
+  });
+  if (operationError) throw operationError;
+
+  const response = await fetch('/api/signature/notify-physical', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ saleId, storagePath })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'No se pudo enviar la notificacion por correo.');
+
+  setCurrentSale(saleId, 'signed_physical');
+  await loadSaleOperationHistory(saleId);
+  await loadArchive();
+  return result;
+}
+
 async function sendLoginLink() {
   const email = controls.sellerEmail.value.trim() || DEFAULT_SELLER_EMAIL;
   const password = controls.sellerPassword.value;
@@ -2919,6 +3198,8 @@ window.EasyCarCloud = {
   saveInsuranceGpsIdentification,
   saveInsuranceGpsReview,
   insuranceGpsDraftPending,
+  saveMechanicalReview,
+  saveInterviewCall,
   checkDuplicateVin,
   scheduleAutoSave,
   openSale: loadSale,
@@ -2975,6 +3256,16 @@ if (!configured) {
   controls.newSale.addEventListener('click', newSale);
   controls.sendSignature.addEventListener('click', () => sendForSignature().catch(error => setCloudStatus(error.message, 'error')));
   controls.sendInsuranceSms?.addEventListener('click', () => sendInsuranceSms().catch(error => setCloudStatus(error.message, 'error')));
+  controls.markSignedPhysical?.addEventListener('click', () => controls.markSignedPhysicalFile?.click());
+  controls.markSignedPhysicalFile?.addEventListener('change', () => {
+    const file = controls.markSignedPhysicalFile.files?.[0];
+    controls.markSignedPhysicalFile.value = '';
+    if (!file) return;
+    setCloudStatus('Subiendo documento firmado y enviando notificacion...', '');
+    markSignedPhysicalAndNotify(file)
+      .then(result => setCloudStatus(`Venta marcada como firmada fisicamente. Notificacion enviada a ${result.sentTo}.`, 'good'))
+      .catch(error => setCloudStatus(`No se pudo completar la firma fisica: ${error.message}`, 'error'));
+  });
   const setOpsFilterFromEvent = event => {
     const button = event.target.closest('[data-ops-filter]');
     if (!button) return;
