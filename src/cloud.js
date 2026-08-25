@@ -364,6 +364,46 @@ function validBirthDate(value) {
   return parsed.getTime() <= todayUtc;
 }
 
+function addCalendarDay(dateStr) {
+  const base = dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? new Date(`${dateStr}T00:00:00Z`) : new Date();
+  base.setUTCDate(base.getUTCDate() + 1);
+  return base.toISOString().slice(0, 10);
+}
+
+// Called on every explicit (non-quiet) "Guardar venta" for a BHPH/BANCO
+// sale -- not gated on wasExisting, because the quiet autosave almost
+// always creates the row before the operator clicks Guardar, which would
+// make a wasExisting check see the sale as "already existing" even on its
+// first real save. Idempotency instead comes from checking whether the
+// day-after interview_call activity already exists for this sale. Schedules
+// the GPS review, insurance review, and interview call together through the
+// same RPC the GPS/Seguro module already uses, so due_at gets the correct
+// America/New_York time server-side instead of guessing it in the browser.
+async function scheduleDayAfterActivities(saleId, formData) {
+  const saleType = formData.sale_type === 'BANCO' ? 'BANCO' : formData.sale_type;
+  if (saleType !== 'BHPH' && saleType !== 'BANCO') return;
+  try {
+    const { count, error: checkError } = await supabase
+      .from('doc_activities')
+      .select('id', { count: 'exact', head: true })
+      .eq('sale_id', saleId)
+      .eq('activity_type', 'interview_call');
+    if (checkError) throw checkError;
+    if (count > 0) return;
+
+    const nextDay = addCalendarDay(formData.transaction_date);
+    const note = 'Programado automaticamente al crear la venta.';
+    const rows = [
+      { module: 'insurance_gps', event_type: 'proxima_revision_gps', status: 'Pendiente', follow_up_at: nextDay, note },
+      { module: 'insurance_gps', event_type: 'proxima_revision_seguro', status: 'Pendiente', follow_up_at: nextDay, note },
+      { module: 'survey', event_type: 'proxima_llamada_entrevista', status: 'Pendiente', follow_up_at: nextDay, note }
+    ];
+    await saveInsuranceGpsEventAtomically(formData, rows);
+  } catch (error) {
+    console.error('No se pudieron agendar las tareas del dia siguiente (GPS, seguro, entrevista).', error);
+  }
+}
+
 async function saveSale(formData, { quiet = false } = {}) {
   if (!supabase || !session?.user) return null;
   const wasExisting = Boolean(currentSaleId);
@@ -424,6 +464,7 @@ async function saveSale(formData, { quiet = false } = {}) {
       console.error('La venta se guardo, pero no pudo registrarse su asiento de auditoria.', auditError);
       setCloudStatus('Venta guardada. La bitacora de la venta no pudo actualizarse y requiere revision administrativa.', 'error');
     }
+    await scheduleDayAfterActivities(data.id, formData);
     await loadRecentSales();
     await loadArchive();
     await loadOpsReport();
@@ -1102,6 +1143,7 @@ async function saveMechanicalReview(formData) {
 function interviewPayload(formData) {
   return {
     customer_name: [formData.first_name, formData.middle_name, formData.last_name, formData.second_last_name].filter(Boolean).join(' '),
+    interview_call_phone: formData.interview_call_phone || '',
     employer_name: formData.employer_name || '',
     employer_phone: formData.employer_phone || '',
     employer_position: formData.employer_position || '',
@@ -1112,6 +1154,10 @@ function interviewPayload(formData) {
     personal_ref2_name: formData.personal_ref2_name || '',
     personal_ref2_phone: formData.personal_ref2_phone || '',
     personal_ref2_relationship: formData.personal_ref2_relationship || '',
+    interview_vehicle_condition: formData.interview_vehicle_condition || '',
+    interview_review_rating: formData.interview_review_rating || '',
+    interview_gps_checked: formData.interview_gps_checked || '',
+    interview_insurance_checked: formData.interview_insurance_checked || '',
     interview_call_date: formData.interview_call_date || '',
     interview_call_result: formData.interview_call_result || ''
   };
@@ -1122,6 +1168,7 @@ async function saveInterviewCall(formData) {
   const hasCaseIdentity = [formData.first_name, formData.last_name, formData.vin, formData.stock_number]
     .some(value => String(value || '').trim());
   if (!hasCaseIdentity) throw new Error('Identifica al cliente o al vehiculo antes de registrar la llamada de entrevista.');
+  if (!String(formData.interview_call_phone || '').trim()) throw new Error('Registra el numero al que llamaste antes de registrar la llamada.');
   if (!formData.interview_call_result) throw new Error('Selecciona el resultado de la llamada antes de registrar.');
   if (String(formData.interview_notes || '').trim().length < 12) {
     throw new Error('La nota debe explicar que se confirmo y que queda pendiente (minimo 12 caracteres).');

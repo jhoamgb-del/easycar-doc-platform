@@ -233,6 +233,7 @@
     .ops-ok { color: #087443; font-weight: 900; }
     .ops-warn { color: #9a5a00; font-weight: 900; }
     .process-panel { grid-column: 1 / -1; display: grid; gap: 8px; padding: 12px 14px; border: 1px solid #d5e1f1; border-left: 5px solid var(--blue); border-radius: 6px; background: #fff; }
+    .interview-script { white-space: pre-wrap; font-family: inherit; font-size: .86rem; line-height: 1.5; margin: 0; color: var(--dark); }
     .process-panel[hidden] { display: none; }
     .process-panel h4 { margin: 0; color: var(--dark); font-size: .9rem; }
     .process-panel p { margin: 0; color: var(--muted); font-size: .86rem; line-height: 1.4; }
@@ -1008,7 +1009,15 @@
         </div>
 
         <div class="section-title interview-only" id="interviewSection">ENTREVISTA POSTVENTA</div>
-        <div class="storage-note interview-only">Llamada del dia siguiente a la venta: confirma con el cliente sus referencias laborales y personales.</div>
+        <div class="storage-note interview-only">Llamada del dia siguiente a la venta. Siga el guion, confirme los datos con el cliente y registre los resultados.</div>
+        <div class="process-panel interview-only" id="interviewScriptPanel">
+          <h4>Guion sugerido de la llamada</h4>
+          <pre class="interview-script" id="interviewScriptText"></pre>
+          <div class="process-actions"><button type="button" class="secondary" id="copyInterviewScript">Copiar guion</button></div>
+        </div>
+        <div class="section-title interview-only">Verificacion de datos del cliente</div>
+        <label class="interview-only">Numero al que llamo <input id="interview_call_phone" placeholder="Confirme o corrija el numero real usado en la llamada"></label>
+        <label class="full interview-only">Recordatorio: confirme direccion, correo y si tiene otro telefono ademas del ya registrado arriba (Direccion / Correo / Telefono alterno).</label>
         <label class="interview-only">Empleador <input id="employer_name"></label>
         <label class="interview-only">Telefono del empleador <input id="employer_phone"></label>
         <label class="interview-only">Puesto <input id="employer_position"></label>
@@ -1019,6 +1028,43 @@
         <label class="interview-only">Referencia personal 2 - nombre <input id="personal_ref2_name"></label>
         <label class="interview-only">Referencia personal 2 - telefono <input id="personal_ref2_phone"></label>
         <label class="interview-only">Referencia personal 2 - relacion <input id="personal_ref2_relationship"></label>
+        <div class="section-title interview-only">Experiencia con el vehiculo y el dealer</div>
+        <label class="interview-only">Recibio el carro bien / limpio
+          <select id="interview_vehicle_condition">
+            <option value=""></option>
+            <option>Si, en buen estado</option>
+            <option>Con detalles menores</option>
+            <option>Con problemas</option>
+          </select>
+        </label>
+        <label class="interview-only">Calificacion del cliente al dealer (1-5)
+          <select id="interview_review_rating">
+            <option value=""></option>
+            <option value="5">5 - Excelente</option>
+            <option value="4">4</option>
+            <option value="3">3</option>
+            <option value="2">2</option>
+            <option value="1">1 - Muy insatisfecho</option>
+          </select>
+        </label>
+        <div class="process-actions interview-only"><button type="button" class="secondary" id="sendReviewLink">Copiar enlace de resena de Google</button></div>
+        <div class="section-title interview-only">Confirmacion de GPS y seguro en esta llamada</div>
+        <label class="interview-only">GPS revisado en esta llamada
+          <select id="interview_gps_checked">
+            <option value=""></option>
+            <option>Si</option>
+            <option>No</option>
+          </select>
+        </label>
+        <label class="interview-only">Seguro verificado en esta llamada
+          <select id="interview_insurance_checked">
+            <option value=""></option>
+            <option>Si</option>
+            <option>No</option>
+          </select>
+        </label>
+        <div class="storage-note interview-only">La verificacion real de GPS y de la poliza se registra en la pestana GPS Y SEGURO. Estas dos casillas son solo el resumen de lo que se hizo durante esta llamada.</div>
+        <div class="section-title interview-only">Cierre de la llamada</div>
         <label class="interview-only">Fecha de la llamada <input id="interview_call_date" type="date"></label>
         <label class="interview-only">Resultado de la llamada
           <select id="interview_call_result">
@@ -1034,7 +1080,7 @@
         <label class="full interview-only">Notas <textarea id="interview_notes" placeholder="Explica que se confirmo y que queda pendiente (minimo 12 caracteres)"></textarea></label>
         <div class="ops-action interview-only">
           <button type="button" id="saveInterviewCall">Registrar llamada de entrevista</button>
-          <div id="interviewStatus" class="status">Cada llamada requiere resultado y nota para dejar evidencia con usuario, dia y hora.</div>
+          <div id="interviewStatus" class="status">Cada llamada requiere numero marcado, resultado y nota para dejar evidencia con usuario, dia y hora.</div>
         </div>
 
         <div class="section-title sale-operation-only">Venta y pago</div>
@@ -1479,6 +1525,7 @@
       MECHANICAL: 'MECANICA: usa el mismo cliente, VIN y vehiculo del expediente para registrar el estado fisico y mecanico del carro.',
       INTERVIEW: 'ENTREVISTA: llamada del dia siguiente a la venta para confirmar referencias laborales y personales del cliente.'
     };
+    const GOOGLE_REVIEW_URL = '';
     const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO';
     const buildSupabaseUrl = '%VITE_SUPABASE_URL%';
     const buildSupabaseAnonKey = '%VITE_SUPABASE_ANON_KEY%';
@@ -1495,7 +1542,7 @@
       'insurance_provider','insurance_policy_number','insurance_agency_phone','insurance_issue_date','insurance_expiration_date','insurance_customer_role','insurance_policyholder_name','insurance_policyholder_relationship','insurance_policyholder_address','insurance_driver_listed','insurance_driver_name_on_policy','insurance_driver_address','insurance_address_review_status','insurance_gps_address_match','insurance_address_follow_up_notes','insurance_address_matches','insurance_policy_address','insurance_party_schema_version','insurance_cancelled_since','insurance_status','insurance_verified_date','insurance_next_review_date','insurance_payments_current','insurance_comprehensive','insurance_collision','insurance_lienholder','insurance_status_reason','insurance_follow_up_path',
       'gps_imei','gps_provider','gps_device_status','gps_battery_connected','gps_last_mileage','gps_last_location','gps_location_jurisdiction','gps_last_seen_at','gps_overnight_location','gps_status_reason','gps_next_review_date','gps_monthly_miles','gps_monthly_miles_status',
       'mechanical_status','mechanical_mileage_at_review','mechanical_issues_found','mechanical_action_taken','mechanical_next_review_date','mechanical_notes',
-      'employer_name','employer_phone','employer_position','employer_length','personal_ref1_name','personal_ref1_phone','personal_ref1_relationship','personal_ref2_name','personal_ref2_phone','personal_ref2_relationship','interview_call_date','interview_call_result','interview_next_action_date','interview_notes',
+      'interview_call_phone','employer_name','employer_phone','employer_position','employer_length','personal_ref1_name','personal_ref1_phone','personal_ref1_relationship','personal_ref2_name','personal_ref2_phone','personal_ref2_relationship','interview_vehicle_condition','interview_review_rating','interview_gps_checked','interview_insurance_checked','interview_call_date','interview_call_result','interview_next_action_date','interview_notes',
       'recovery_event_type','recovery_event_date','recovery_last_location','recovery_policy_active_on_event','recovery_repo_confirmed','recovery_damage_notes','gap_has_coverage','gap_provider','gap_contract_number','gap_issued_vin','gap_vin_match','gap_issue_date','gap_contract_status','gap_claim_status','insurance_claim_number','gap_claim_number','gap_opened_date','insurance_claim_last_call_date','gap_last_call_date','claim_pending_action','gap_missing_documents','ops_action_type','ops_contact_result','ops_next_action','ops_next_action_date','ops_next_action_time','insurance_gps_notes',
       'preferred_call_hours','bank_name','authorized_amount','cardholder_name','card_last_four','card_expiration','billing_zip','price_payment_terms',
       'conditional_delivery_date','conditional_deadline',
@@ -1550,6 +1597,7 @@
       if (normalized === 'MECHANICAL' && $('sale_module_mechanical')) $('sale_module_mechanical').checked = true;
       if (normalized === 'INTERVIEW' && $('sale_module_interview')) $('sale_module_interview').checked = true;
       renderDocs();
+      renderInterviewScript();
     }
     function setSaleType(type) {
       const normalized = type === 'REPO' ? 'REPO' : type === 'VOLUNTARY' ? 'VOLUNTARY' : type === 'BANCO' ? 'BANCO' : 'BHPH';
@@ -1833,6 +1881,46 @@
       } else {
         window.prompt(label, text);
       }
+    }
+    function copyPlainText(text, label, onDone) {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).then(() => onDone?.(`${label} copiado.`, 'good'));
+      } else {
+        window.prompt(label, text);
+      }
+    }
+    function interviewScriptText() {
+      const name = fullName() || 'el cliente';
+      const car = vehicle() || 'su vehiculo';
+      const saleDate = dateValue('transaction_date') || 'la fecha de la venta';
+      const downAmount = moneyValue('pickup_down_paid_today') || moneyValue('pickup_down_total');
+      const firstDate = dateValue('pickup_start_date');
+      const firstAmount = moneyValue('pickup_amount_1');
+      const frequency = pickupFrequencyDisplay();
+      const lines = [
+        `1. Saludo: "Buenos dias/tardes, le habla [su nombre] de EasyCar LLC. Le llamo para confirmar los datos de su compra."`,
+        `   Cliente: ${name} | Vehiculo: ${car}`,
+        `2. Confirme los pagos ya acordados (no vuelva a preguntar el monto, solo confirmelo):`,
+        downAmount ? `   - Inicial pagada el ${saleDate}: ${downAmount}` : '   - Inicial: (sin datos de pago guardados aun)',
+        firstDate ? `   - Primer pago (${frequency}) el ${firstDate}: ${firstAmount || 'ver expediente'}` : '   - Primer pago: (sin fecha guardada aun)',
+        `3. Verifique con el cliente (pregunte de nuevo, aunque ya lo tengamos guardado):`,
+        `   - Donde trabaja actualmente`,
+        `   - Que su direccion siga siendo la misma`,
+        `   - Que su correo siga siendo el mismo`,
+        `   - Si tiene otro telefono ademas del que ya nos dio`,
+        `4. Confirme las 2 referencias personales (nombre, telefono, relacion).`,
+        `5. Pregunte: ¿Recibio el carro en buen estado y limpio?`,
+        `6. Pida que califique el dealer y ofrezca enviarle el enlace de resena de Google.`,
+        `7. Si reporta un problema mecanico, anotelo y abra despues la pestana MECANICA para ese expediente.`,
+        `8. Cierre: registre resultado, numero al que llamo, y una nota clara de lo confirmado y lo pendiente.`
+      ];
+      return lines.join('\n');
+    }
+    function renderInterviewScript() {
+      const box = $('interviewScriptText');
+      if (box) box.textContent = interviewScriptText();
+      const phoneField = $('interview_call_phone');
+      if (phoneField && !phoneField.value) phoneField.value = val('phone') || val('alternate_phone') || '';
     }
     function compactCalendarDate(dateValue, timeValue = '09:00') {
       const date = String(dateValue || '').replace(/-/g, '');
@@ -2677,6 +2765,7 @@
       updateCustomerAge();
       updateInsurancePartyLogic({ loading: true });
       renderDocs();
+      renderInterviewScript();
       setSaveStatus(sale.cloud_only ? `Resumen ${id.slice(0, 8)} abierto. Para datos completos usa Abrir desde ventas centrales.` : `Venta ${id.slice(0, 8)} abierta desde este navegador.`, sale.cloud_only ? 'warn' : 'good');
       scheduleVinDuplicateCheck();
       $('clientSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2844,6 +2933,7 @@
       if (id.startsWith('repo_')) updateRepoCalculations();
       updateOperationalDialogs();
       renderDocs();
+      renderInterviewScript();
       window.EasyCarCloud?.scheduleAutoSave?.(collectFormData());
     }));
     ids.forEach(id => $(id)?.addEventListener('change', () => {
@@ -2860,6 +2950,7 @@
       if (id.startsWith('repo_')) updateRepoCalculations();
       updateOperationalDialogs();
       renderDocs();
+      renderInterviewScript();
       window.EasyCarCloud?.scheduleAutoSave?.(collectFormData());
     }));
     $('vin').addEventListener('input', scheduleVinDecode);
@@ -2924,6 +3015,14 @@
     $('sale_module_interview').addEventListener('change', () => setActiveModule('INTERVIEW'));
     $('saveMechanicalReview')?.addEventListener('click', saveMechanicalReviewHandler);
     $('saveInterviewCall')?.addEventListener('click', saveInterviewCallHandler);
+    $('copyInterviewScript')?.addEventListener('click', () => copyPlainText(interviewScriptText(), 'Guion', setInterviewStatus));
+    $('sendReviewLink')?.addEventListener('click', () => {
+      if (!GOOGLE_REVIEW_URL) {
+        setInterviewStatus('Falta configurar el enlace de resena de Google en el sistema.', 'warn');
+        return;
+      }
+      copyPlainText(GOOGLE_REVIEW_URL, 'Enlace de resena', setInterviewStatus);
+    });
     $('salesList').addEventListener('click', event => {
       const button = event.target.closest('[data-load-sale]');
       if (button) loadLocalSale(button.dataset.loadSale);
@@ -2936,6 +3035,7 @@
     updateInsuranceGpsSchedule();
     updateGpsLocationAndMileage();
     syncInsuranceCoverage();
+    renderInterviewScript();
     updateGapVinMatch();
     updateOperationalDialogs();
     renderDocs();
@@ -2964,6 +3064,7 @@
         updateGpsLocationAndMileage();
         updateGapVinMatch();
         renderDocs();
+        renderInterviewScript();
       },
       clearForm() {
         loadedFormData = {};
