@@ -54,7 +54,14 @@ const controls = {
   opsHistoryDialog: byId('opsHistoryDialog'),
   opsHistoryTitle: byId('opsHistoryTitle'),
   opsHistoryMeta: byId('opsHistoryMeta'),
-  opsHistoryFacts: byId('opsHistoryFacts'),
+  opsHistoryStatus: byId('opsHistoryStatus'),
+  opsHistoryAction: byId('opsHistoryAction'),
+  opsHistoryDue: byId('opsHistoryDue'),
+  opsHistorySeverity: byId('opsHistorySeverity'),
+  opsHistoryClientFacts: byId('opsHistoryClientFacts'),
+  opsHistoryVehicleFacts: byId('opsHistoryVehicleFacts'),
+  opsHistoryInsuranceFacts: byId('opsHistoryInsuranceFacts'),
+  opsHistoryGpsFacts: byId('opsHistoryGpsFacts'),
   opsHistoryPending: byId('opsHistoryPending'),
   opsHistoryInsurance: byId('opsHistoryInsurance'),
   opsHistoryGps: byId('opsHistoryGps'),
@@ -892,6 +899,23 @@ function validatePolicyParties(formData = {}) {
   }
 }
 
+function insuranceGpsDraftPending(formData = {}) {
+  const pending = [];
+  if (!validBirthDate(formData.customer_birth_date)) pending.push('fecha de nacimiento');
+  if (!formData.insurance_policy_number) pending.push('numero de poliza');
+  if (formData.insurance_policy_number) {
+    if (!formData.insurance_customer_role) pending.push('titular o conductor de la poliza');
+    if (!String(formData.insurance_policyholder_name || '').trim()) pending.push('nombre del titular');
+    if (!String(formData.insurance_policyholder_address || '').trim()) pending.push('direccion del titular');
+    if (!formData.insurance_address_review_status) pending.push('comparacion de direcciones');
+    if (!formData.insurance_status) pending.push('estatus del seguro');
+  }
+  if (!formData.gps_imei) pending.push('numero o IMEI del GPS');
+  if (!formData.gps_provider) pending.push('proveedor GPS');
+  if (!formData.gps_device_status) pending.push('estatus del GPS');
+  return [...new Set(pending)];
+}
+
 async function saveInsuranceGpsReview(formData) {
   if (!supabase || !session?.user) return null;
   if (!validBirthDate(formData.customer_birth_date)) throw new Error('Registra una fecha de nacimiento valida antes de verificar Seguro y GPS.');
@@ -995,10 +1019,9 @@ async function saveInsuranceGpsReview(formData) {
 
 async function saveInsuranceGpsIdentification(formData) {
   if (!supabase || !session?.user) return null;
-  if (!validBirthDate(formData.customer_birth_date)) {
-    throw new Error('Registra una fecha de nacimiento valida antes de guardar Seguro y GPS.');
-  }
-  validatePolicyParties(formData);
+  const hasCaseIdentity = [formData.first_name, formData.last_name, formData.vin, formData.stock_number]
+    .some(value => String(value || '').trim());
+  if (!hasCaseIdentity) throw new Error('Identifica al cliente o al vehiculo antes de guardar el borrador.');
   formData.insurance_status = normalizedInsuranceStatus(formData);
   if (formData.insurance_status === 'Activo OK') {
     formData.insurance_payments_current = 'Si';
@@ -1011,9 +1034,6 @@ async function saveInsuranceGpsIdentification(formData) {
     formData.insurance_comprehensive = '';
     formData.insurance_collision = '';
     formData.insurance_lienholder = '';
-  }
-  if (['Cancelado', 'Vencido'].includes(formData.insurance_status) && !formData.insurance_follow_up_path) {
-    throw new Error('Selecciona la ruta de seguimiento para la poliza cancelada o vencida.');
   }
   const payload = insuranceGpsPayload(formData);
   const status = [formData.insurance_status, formData.gps_device_status].filter(Boolean).join(' / ') || 'Pendiente de verificacion';
@@ -1997,23 +2017,36 @@ function showOpsHistory(profile) {
     profile.form.pickup_payment_count ? `${profile.form.pickup_payment_count} cuotas ${profile.form.pickup_frequency || ''}` : '',
     profile.form.pickup_start_date ? `Primera ${formatDateDisplay(profile.form.pickup_start_date)}` : ''
   ].filter(Boolean).join(' | ');
-  const facts = [
-    ['Prioridad', profile.severity === 'critical' ? 'CRITICO' : profile.severity === 'attention' ? 'PENDIENTE' : profile.severity === 'closed' ? 'CERRADO' : 'AL DIA'],
-    ['Proxima accion', primaryOpsAction(profile)],
-    ['Fecha pendiente', nextOpsDueText(profile)],
+  const severityLabel = profile.severity === 'critical' ? 'CRITICO' : profile.severity === 'attention' ? 'PENDIENTE' : profile.severity === 'closed' ? 'CERRADO' : 'AL DIA';
+  controls.opsHistoryStatus.className = `ops-case-status ${profile.severity || ''}`.trim();
+  controls.opsHistoryAction.textContent = primaryOpsAction(profile);
+  controls.opsHistoryDue.textContent = `Proxima fecha: ${nextOpsDueText(profile)}`;
+  controls.opsHistorySeverity.textContent = severityLabel;
+  const clientFacts = [
     ['Cliente', `Nacimiento: ${profile.form.customer_birth_date ? formatDateDisplay(profile.form.customer_birth_date) : 'pendiente'} | Telefono: ${profile.sale.customer_phone || 'sin telefono'}`],
     ['Venta', `${saleTypeLabel(profile.form)} | ${profile.sale.transaction_date ? formatDateDisplay(profile.sale.transaction_date) : 'sin fecha'} | Contrato ${profile.sale.contract_number || 'sin numero'}`],
-    ['Condiciones de pago', paymentTerms],
+    ['Contacto', `${profile.sale.customer_email || 'sin email'} | ${profile.sale.customer_phone || 'sin telefono'}`],
+    ['Condiciones de pago', paymentTerms]
+  ];
+  const vehicleFacts = [
+    ['Vehiculo', profile.sale.vehicle_description || 'sin completar'],
+    ['VIN', profile.sale.vin || 'sin registrar'],
+    ['Stock', profile.sale.stock_number || 'sin registrar'],
+    ['Carga del expediente', profile.sale.created_at ? new Date(profile.sale.created_at).toLocaleString('en-US') : 'sin fecha']
+  ];
+  const insuranceFacts = [
     ['Seguro', `${profile.form.insurance_status || 'sin verificar'} | Poliza ${profile.form.insurance_policy_number || 'sin numero'} | Vence ${profile.form.insurance_expiration_date ? formatDateDisplay(profile.form.insurance_expiration_date) : 'sin fecha'}`],
     ['Partes de la poliza', `${profile.form.insurance_customer_role || 'rol pendiente'} | Titular: ${profile.form.insurance_policyholder_name || 'sin registrar'} | Conductor confirmado: ${profile.form.insurance_driver_listed || 'no confirmado'}`],
     ['Direcciones', `${profile.form.insurance_address_review_status || 'sin revisar'} | Contraste GPS: ${profile.form.insurance_gps_address_match || 'no confirmado'}`],
-    ['Cobertura', `Comprehensive + Collision: ${profile.form.insurance_comprehensive === 'Si' && profile.form.insurance_collision === 'Si' ? 'Si' : 'No confirmado'} | EasyCar lien holder: ${profile.form.insurance_lienholder || 'no confirmado'}`],
+    ['Cobertura', `Comprehensive + Collision: ${profile.form.insurance_comprehensive === 'Si' && profile.form.insurance_collision === 'Si' ? 'Si' : 'No confirmado'} | EasyCar lien holder: ${profile.form.insurance_lienholder || 'no confirmado'}`]
+  ];
+  const gpsFacts = [
     ['GPS', `${profile.form.gps_device_status || 'sin verificar'} | IMEI ${profile.form.gps_imei || 'sin registrar'} | Proveedor ${profile.form.gps_provider || 'sin registrar'}`],
     ['Ubicacion y millas', `${profile.form.gps_last_location || 'sin ubicacion'} | ${profile.form.gps_location_jurisdiction || 'jurisdiccion pendiente'} | ${profile.form.gps_monthly_miles || 'sin millas'} en el periodo`],
     ['Siniestro / GAP', `${profile.form.gap_claim_status || 'sin reclamo'} | Seguro ${profile.form.insurance_claim_number || 'sin claim'} | GAP ${profile.form.gap_claim_number || 'sin claim'}`],
     ['Reposicion / entrega', `${profile.form.recovery_event_type || 'ninguno'} | Fecha ${profile.form.recovery_event_date ? formatDateDisplay(profile.form.recovery_event_date) : 'sin fecha'} | Ubicacion ${profile.form.recovery_last_location || 'sin confirmar'} | Poliza activa: ${profile.form.recovery_policy_active_on_event || 'sin confirmar'}`]
   ];
-  controls.opsHistoryFacts.replaceChildren(...facts.map(([label, value]) => {
+  const renderFacts = (container, facts) => container.replaceChildren(...facts.map(([label, value]) => {
     const fact = document.createElement('div');
     fact.className = 'ops-history-fact';
     const title = document.createElement('strong');
@@ -2023,6 +2056,10 @@ function showOpsHistory(profile) {
     fact.append(title, detail);
     return fact;
   }));
+  renderFacts(controls.opsHistoryClientFacts, clientFacts);
+  renderFacts(controls.opsHistoryVehicleFacts, vehicleFacts);
+  renderFacts(controls.opsHistoryInsuranceFacts, insuranceFacts);
+  renderFacts(controls.opsHistoryGpsFacts, gpsFacts);
   const allOperations = profile.allOperations || profile.operations || [];
   const pendingTasks = calendarTasksForProfiles([profile]);
   if (controls.opsHistoryPending) {
@@ -2557,7 +2594,7 @@ async function connectGoogleCalendar() {
   if (!session?.access_token) throw new Error('Debes entrar con un usuario autorizado.');
   controls.connectGoogleCalendar.disabled = true;
   if (controls.calendarConnectionStatus) {
-    controls.calendarConnectionStatus.textContent = 'Preparando enlace privado de calendario...';
+    controls.calendarConnectionStatus.textContent = 'Preparando suscripcion privada de solo lectura...';
     controls.calendarConnectionStatus.className = 'status';
   }
   try {
@@ -2576,8 +2613,8 @@ async function connectGoogleCalendar() {
     if (!copied) window.prompt('Copia este enlace privado y pegalo en Google Calendar > Desde URL', result.feedUrl);
     if (controls.calendarConnectionStatus) {
       controls.calendarConnectionStatus.textContent = copied
-        ? 'Enlace privado copiado. En Google Calendar, pegalo en "Desde URL". Esta conexion es personal y no debe compartirse.'
-        : 'Google Calendar se abrio. Pega alli el enlace privado mostrado; no debes compartirlo.';
+        ? 'Enlace privado copiado. Pegalo en Google Calendar > Desde URL. Es una suscripcion de solo lectura y no debe compartirse.'
+        : 'Google Calendar se abrio. Pega alli el enlace privado mostrado. Es una suscripcion de solo lectura; no debes compartirla.';
       controls.calendarConnectionStatus.className = 'status good';
     }
     window.open(result.calendarSettingsUrl, '_blank', 'noopener,noreferrer');
@@ -2881,6 +2918,7 @@ window.EasyCarCloud = {
   saveSale,
   saveInsuranceGpsIdentification,
   saveInsuranceGpsReview,
+  insuranceGpsDraftPending,
   checkDuplicateVin,
   scheduleAutoSave,
   openSale: loadSale,
