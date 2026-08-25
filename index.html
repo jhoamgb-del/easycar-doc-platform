@@ -1,6 +1,11 @@
 <!doctype html>
 <html lang="es">
 <head>
+  <script>
+    if (window.location.protocol === 'file:') {
+      window.location.replace('https://docs.easycarus.com/');
+    }
+  </script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#1555a6">
@@ -191,6 +196,16 @@
     .ops-history-actions > button { min-width: auto; padding: 9px 12px; font-size: .78rem; }
     .ops-history-actions form { margin: 0; }
     .ops-history-body { display: grid; gap: 16px; padding: 16px 18px 20px; overflow: auto; }
+    .ops-case-status { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border-left: 5px solid var(--blue); background: #eef5ff; }
+    .ops-case-status.critical { border-left-color: var(--red); background: #fff1f3; }
+    .ops-case-status.attention { border-left-color: #b66c00; background: #fff8e8; }
+    .ops-case-status.closed { border-left-color: #667085; background: #f3f5f8; }
+    .ops-case-status strong { display: block; font-size: .84rem; }
+    .ops-case-status span { display: block; margin-top: 3px; color: var(--muted); font-size: .78rem; }
+    .ops-case-status b { font-size: .76rem; text-transform: uppercase; }
+    .ops-case-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .ops-case-section { padding: 12px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fbfdff; }
+    .ops-case-section h4 { padding-bottom: 7px; border-bottom: 2px solid #dbe7f6; }
     .ops-history-body h4 { margin: 0 0 8px; font-size: .86rem; }
     .ops-history-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; border-top: 1px solid #d5e1f1; }
     .ops-history-fact { padding: 9px 0; border-bottom: 1px solid #d5e1f1; }
@@ -305,6 +320,7 @@
       .ops-view-actions { align-items: stretch; flex-direction: column; width: 100%; }
       .ops-view-actions button { width: 100%; }
       .ops-history-facts { grid-template-columns: 1fr; }
+      .ops-case-status, .ops-case-sections { grid-template-columns: 1fr; }
       .ops-history-header { align-items: stretch; }
       .ops-history-actions { justify-content: flex-start; }
       .ops-history-actions > button { flex: 1 1 145px; }
@@ -555,9 +571,9 @@
         <section class="ops-calendar" id="opsCalendarPanel" aria-label="Calendario del operador" hidden>
           <div class="ops-calendar-header">
             <h4 id="opsCalendarTitle">Agenda del operador</h4>
-            <div><button type="button" class="secondary" id="connectGoogleCalendar">Conectar Google Calendar</button><button type="button" class="secondary" id="opsCalendarPrevious" aria-label="Mes anterior">&lt;</button><button type="button" class="secondary" id="opsCalendarNext" aria-label="Mes siguiente">&gt;</button></div>
+            <div><button type="button" class="secondary" id="connectGoogleCalendar">Suscribir agenda en Google Calendar</button><button type="button" class="secondary" id="opsCalendarPrevious" aria-label="Mes anterior">&lt;</button><button type="button" class="secondary" id="opsCalendarNext" aria-label="Mes siguiente">&gt;</button></div>
           </div>
-          <div id="calendarConnectionStatus" class="status">La agenda interna se actualiza inmediatamente. La conexion privada permite ver todas las actividades pendientes en Google Calendar.</div>
+          <div id="calendarConnectionStatus" class="status">La agenda interna se actualiza inmediatamente. Google Calendar funciona actualmente mediante una suscripcion privada de solo lectura; la sincronizacion directa todavia no esta activada.</div>
           <div class="ops-calendar-weekdays"><span>Dom</span><span>Lun</span><span>Mar</span><span>Mie</span><span>Jue</span><span>Vie</span><span>Sab</span></div>
           <div class="ops-calendar-grid" id="opsCalendarGrid"></div>
           <div class="ops-calendar-agenda" id="opsCalendarAgenda"></div>
@@ -586,7 +602,13 @@
           </div>
         </div>
         <div class="ops-history-body">
-          <section><h4>Estado actual</h4><div class="ops-history-facts" id="opsHistoryFacts"></div></section>
+          <div class="ops-case-status" id="opsHistoryStatus"><div><strong id="opsHistoryAction">Estado del expediente</strong><span id="opsHistoryDue">Sin proxima accion</span></div><b id="opsHistorySeverity">PENDIENTE</b></div>
+          <div class="ops-case-sections">
+            <section class="ops-case-section"><h4>Cliente y venta</h4><div class="ops-history-facts" id="opsHistoryClientFacts"></div></section>
+            <section class="ops-case-section"><h4>Vehiculo</h4><div class="ops-history-facts" id="opsHistoryVehicleFacts"></div></section>
+            <section class="ops-case-section"><h4>Seguro</h4><div class="ops-history-facts" id="opsHistoryInsuranceFacts"></div></section>
+            <section class="ops-case-section"><h4>GPS, siniestro y recuperacion</h4><div class="ops-history-facts" id="opsHistoryGpsFacts"></div></section>
+          </div>
           <section><h4>Pendientes y proximas acciones</h4><div class="ops-history-timeline" id="opsHistoryPending"></div></section>
           <section><h4>Historial de seguro</h4><div class="ops-history-timeline" id="opsHistoryInsurance"></div></section>
           <section><h4>Historial de GPS</h4><div class="ops-history-timeline" id="opsHistoryGps"></div></section>
@@ -2619,7 +2641,11 @@
         const formData = collectFormData();
         const cloudSale = window.EasyCarCloud ? await window.EasyCarCloud.saveInsuranceGpsIdentification(formData) : null;
         if (!cloudSale) throw new Error('Inicia sesion con un usuario autorizado para guardar en el expediente central.');
-        setInsuranceGpsStatus(`Datos guardados en el expediente central. ID: ${cloudSale.id.slice(0, 8)}`, 'good');
+        const pending = window.EasyCarCloud?.insuranceGpsDraftPending?.(formData) || [];
+        const pendingText = pending.length
+          ? ` Borrador guardado. Pendientes para completar la verificacion: ${pending.join(', ')}.`
+          : ' Identificacion completa y lista para registrar verificaciones.';
+        setInsuranceGpsStatus(`Datos guardados en el expediente central. ID: ${cloudSale.id.slice(0, 8)}.${pendingText}`, pending.length ? 'warn' : 'good');
       } catch (error) {
         setInsuranceGpsStatus(`No se guardaron los datos centrales: ${error.message || 'revisa Supabase'}`, 'warn');
       } finally {
