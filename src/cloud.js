@@ -71,8 +71,10 @@ const controls = {
   opsHistoryInsurance: byId('opsHistoryInsurance'),
   opsHistoryGps: byId('opsHistoryGps'),
   opsHistoryActivityAudit: byId('opsHistoryActivityAudit'),
+  opsHistorySaleChangeLog: byId('opsHistorySaleChangeLog'),
   opsHistoryOther: byId('opsHistoryOther'),
   opsHistoryEditSale: byId('opsHistoryEditSale'),
+  opsHistorySealedNotice: byId('opsHistorySealedNotice'),
   opsHistoryEditControl: byId('opsHistoryEditControl'),
   customerCaseDialog: byId('customerCaseDialog'),
   customerCaseTitle: byId('customerCaseTitle'),
@@ -1436,12 +1438,19 @@ function renderArchiveResults(sales) {
     docs.prepend(open);
 
     if (!multi) {
-      const edit = document.createElement('button');
-      edit.type = 'button';
-      edit.className = 'secondary';
-      edit.textContent = 'Editar venta';
-      edit.addEventListener('click', () => loadSale(primary.id, { scrollTarget: 'clientSection' }).catch(error => setCloudStatus(error.message, 'error')));
-      docs.insertBefore(edit, docs.children[1] || null);
+      if (['signed_digital', 'signed_physical'].includes(primary.status)) {
+        const sealed = document.createElement('span');
+        sealed.className = 'archive-meta';
+        sealed.textContent = 'Documento legal firmado -- no editable';
+        docs.insertBefore(sealed, docs.children[1] || null);
+      } else {
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'secondary';
+        edit.textContent = 'Editar venta';
+        edit.addEventListener('click', () => loadSale(primary.id, { scrollTarget: 'clientSection' }).catch(error => setCloudStatus(error.message, 'error')));
+        docs.insertBefore(edit, docs.children[1] || null);
+      }
     }
 
     summary.append(customer, vehicle, status);
@@ -2203,7 +2212,8 @@ async function loadCaseFile(saleId) {
     { data: sale, error: saleError },
     { data: operations, error: operationsError },
     { data: activities, error: activitiesError },
-    { data: activityEvents, error: activityEventsError }
+    { data: activityEvents, error: activityEventsError },
+    { data: saleChangeLogRows, error: saleChangeLogError }
   ] = await Promise.all([
     supabase
       .from('doc_sales')
@@ -2227,15 +2237,23 @@ async function loadCaseFile(saleId) {
       .select('id, activity_id, sale_id, event_type, previous_status, new_status, previous_due_at, new_due_at, note, actor_id, created_at')
       .eq('sale_id', saleId)
       .order('created_at', { ascending: false })
+      .limit(500),
+    supabase
+      .from('doc_sales_change_log')
+      .select('id, sale_id, changed_by, changed_at, changed_fields')
+      .eq('sale_id', saleId)
+      .order('changed_at', { ascending: false })
       .limit(500)
   ]);
   if (saleError) throw saleError;
   if (operationsError) throw operationsError;
   if (activitiesError && activitiesError.code !== '42P01') throw activitiesError;
   if (activityEventsError && activityEventsError.code !== '42P01') throw activityEventsError;
+  if (saleChangeLogError && saleChangeLogError.code !== '42P01') throw saleChangeLogError;
   const operatorIds = [...new Set([
     ...(operations || []).map(operation => operation.created_by),
-    ...(activityEvents || []).map(event => event.actor_id)
+    ...(activityEvents || []).map(event => event.actor_id),
+    ...(saleChangeLogRows || []).map(row => row.changed_by)
   ].filter(Boolean))];
   const operatorNames = new Map();
   if (operatorIds.length) {
@@ -2271,6 +2289,15 @@ async function loadCaseFile(saleId) {
       operator_name: operatorNames.get(event.actor_id) || (event.actor_id ? `Usuario ${String(event.actor_id).slice(0, 8)}` : 'Sistema')
     };
   });
+  profile.saleChangeLog = (saleChangeLogRows || []).map(row => ({
+    event_type: 'Venta modificada',
+    created_at: row.changed_at,
+    status: 'Registrado',
+    note: Object.entries(row.changed_fields || {})
+      .map(([field, [before, after]]) => `${field}: ${before ?? 'vacio'} -> ${after ?? 'vacio'}`)
+      .join(' | ') || 'Cambio registrado.',
+    operator_name: operatorNames.get(row.changed_by) || (row.changed_by ? `Usuario ${String(row.changed_by).slice(0, 8)}` : 'Sistema')
+  }));
   return profile;
 }
 
@@ -2332,15 +2359,23 @@ function renderCustomerCaseSales(sales) {
       controls.customerCaseDialog.close();
       showCaseFileById(sale.id);
     });
-    const edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'secondary';
-    edit.textContent = 'Editar venta';
-    edit.addEventListener('click', () => {
-      controls.customerCaseDialog.close();
-      loadSale(sale.id, { scrollTarget: 'clientSection' }).catch(error => setCloudStatus(error.message, 'error'));
-    });
-    actions.append(open, edit);
+    actions.append(open);
+    if (['signed_digital', 'signed_physical'].includes(sale.status)) {
+      const sealed = document.createElement('span');
+      sealed.className = 'archive-meta';
+      sealed.textContent = 'Documento legal firmado -- no editable';
+      actions.append(sealed);
+    } else {
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'secondary';
+      edit.textContent = 'Editar venta';
+      edit.addEventListener('click', () => {
+        controls.customerCaseDialog.close();
+        loadSale(sale.id, { scrollTarget: 'clientSection' }).catch(error => setCloudStatus(error.message, 'error'));
+      });
+      actions.append(edit);
+    }
 
     summary.append(vehicle, status, actions);
     row.append(summary);
@@ -2377,6 +2412,9 @@ async function showCustomerCaseFile(customerId, fallbackSaleId) {
 function showOpsHistory(profile) {
   if (!controls.opsHistoryDialog) return;
   currentHistoryProfile = profile;
+  const sealed = ['signed_digital', 'signed_physical'].includes(profile.sale.status);
+  if (controls.opsHistoryEditSale) controls.opsHistoryEditSale.hidden = sealed;
+  if (controls.opsHistorySealedNotice) controls.opsHistorySealedNotice.hidden = !sealed;
   controls.opsHistoryTitle.textContent = profile.sale.customer_name || 'Cliente sin nombre';
   controls.opsHistoryMeta.textContent = [
     profile.sale.vehicle_description || 'Vehiculo sin completar',
@@ -2512,6 +2550,7 @@ function showOpsHistory(profile) {
   }
   appendTimeline(controls.opsHistoryInsurance, allOperations.filter(operation => ['insurance', 'shared'].includes(operationCategory(operation))), 'Todavia no hay verificaciones de seguro registradas.', 'revisiones de seguro registradas');
   appendTimeline(controls.opsHistoryGps, allOperations.filter(operation => ['gps', 'shared'].includes(operationCategory(operation))), 'Todavia no hay verificaciones de GPS registradas.', 'revisiones de GPS registradas');
+  appendTimeline(controls.opsHistorySaleChangeLog, profile.saleChangeLog || [], 'Todavia no hay modificaciones registradas en esta venta.', 'modificaciones registradas');
   appendTimeline(controls.opsHistoryActivityAudit, profile.activityAudit || [], 'Todavia no hay cambios de agenda registrados.');
   appendTimeline(controls.opsHistoryOther, allOperations.filter(operation => operationCategory(operation) === 'other'), 'No hay otras actividades registradas.');
   if (!controls.opsHistoryDialog.open) controls.opsHistoryDialog.showModal();

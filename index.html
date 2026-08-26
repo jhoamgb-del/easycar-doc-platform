@@ -623,6 +623,7 @@
         <div class="ops-history-header">
           <div><h3 id="opsHistoryTitle">Historial del expediente</h3><p id="opsHistoryMeta"></p></div>
           <div class="ops-history-actions">
+            <span class="archive-meta" id="opsHistorySealedNotice" hidden>Documento legal firmado -- no editable</span>
             <button type="button" class="secondary" id="opsHistoryEditSale">Editar venta</button>
             <button type="button" id="opsHistoryEditControl">Actualizar GPS / seguro</button>
             <form method="dialog"><button type="submit" class="secondary" aria-label="Cerrar historial">&times;</button></form>
@@ -640,6 +641,7 @@
           <section><h4>Documentos firmados</h4><div class="archive-docs" id="opsHistoryDocuments"></div></section>
           <section><h4>Historial de seguro</h4><div class="ops-history-timeline" id="opsHistoryInsurance"></div></section>
           <section><h4>Historial de GPS</h4><div class="ops-history-timeline" id="opsHistoryGps"></div></section>
+          <section><h4>Historial de modificaciones de la venta</h4><div class="ops-history-timeline" id="opsHistorySaleChangeLog"></div></section>
           <section><h4>Cambios en agenda y tareas</h4><div class="ops-history-timeline" id="opsHistoryActivityAudit"></div></section>
           <section><h4>Otras actividades del expediente</h4><div class="ops-history-timeline" id="opsHistoryOther"></div></section>
         </div>
