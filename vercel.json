@@ -11,8 +11,17 @@
     },
     "api/signature/notify-physical.js": {
       "maxDuration": 30
+    },
+    "api/reminders/overdue-review.js": {
+      "maxDuration": 30
     }
   },
+  "crons": [
+    {
+      "path": "/api/reminders/overdue-review",
+      "schedule": "0 13 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",
