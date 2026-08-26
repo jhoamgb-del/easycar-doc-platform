@@ -351,6 +351,17 @@ function validateForSignature(formData) {
     missing.push('Interes anual entre 0% y 30%');
     invalidIds.add('pickup_interest_rate');
   }
+  if (!isVoluntary && !isRepo) {
+    const refPairs = [
+      ['personal_ref1_name', 'personal_ref1_phone'],
+      ['personal_ref2_name', 'personal_ref2_phone'],
+      ['personal_ref3_name', 'personal_ref3_phone']
+    ];
+    const pairComplete = ([nameId, phoneId]) => Boolean(String(formData[nameId] || '').trim() && String(formData[phoneId] || '').trim());
+    const refsValid = refPairs.filter(pairComplete).length >= 2;
+    if (!refsValid) missing.push('Al menos 2 referencias personales completas (nombre y telefono)');
+    refPairs.forEach(pair => pair.forEach(id => markField(id, !refsValid && !pairComplete(pair))));
+  }
   required.forEach(([id]) => markField(id, invalidIds.has(id)));
   return [...new Set(missing)];
 }
@@ -1154,10 +1165,10 @@ function interviewPayload(formData) {
     employer_length: formData.employer_length || '',
     personal_ref1_name: formData.personal_ref1_name || '',
     personal_ref1_phone: formData.personal_ref1_phone || '',
-    personal_ref1_relationship: formData.personal_ref1_relationship || '',
     personal_ref2_name: formData.personal_ref2_name || '',
     personal_ref2_phone: formData.personal_ref2_phone || '',
-    personal_ref2_relationship: formData.personal_ref2_relationship || '',
+    personal_ref3_name: formData.personal_ref3_name || '',
+    personal_ref3_phone: formData.personal_ref3_phone || '',
     interview_vehicle_condition: formData.interview_vehicle_condition || '',
     interview_review_rating: formData.interview_review_rating || '',
     interview_gps_checked: formData.interview_gps_checked || '',
