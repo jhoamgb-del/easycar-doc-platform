@@ -37,6 +37,8 @@ const controls = {
   searchArchive: byId('searchArchive'),
   exportCustomers: byId('exportCustomersCsv'),
   archiveResults: byId('archiveResults'),
+  showDuplicateVins: byId('showDuplicateVins'),
+  duplicateVinResults: byId('duplicateVinResults'),
   importPanel: byId('importPanel'),
   importFile: byId('bulkImportFile'),
   importRun: byId('runBulkImport'),
@@ -1438,6 +1440,7 @@ function renderArchiveResults(sales) {
 
 async function loadArchive() {
   if (!supabase || !session?.user) return;
+  if (controls.duplicateVinResults) controls.duplicateVinResults.hidden = true;
   const term = controls.archiveSearch.value.trim();
   const pageSize = 500;
   const sales = [];
@@ -1574,6 +1577,98 @@ async function exportCustomersCsv() {
     setCloudStatus(`No se pudo descargar clientes: ${error.message || 'revisa Supabase'}`, 'error');
   } finally {
     controls.exportCustomers.disabled = false;
+  }
+}
+
+function normalizeVinForGrouping(vin) {
+  return String(vin || '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
+}
+
+function renderDuplicateVinResults(groups) {
+  const container = controls.duplicateVinResults;
+  if (!container) return;
+  container.hidden = false;
+  container.replaceChildren();
+  if (!groups.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-history';
+    empty.textContent = 'No hay VIN repetidos en el archivo central en este momento.';
+    container.append(empty);
+    return;
+  }
+  groups.forEach(group => {
+    const row = document.createElement('details');
+    row.className = 'archive-row';
+    row.open = false;
+    const summary = document.createElement('summary');
+    summary.className = 'archive-summary';
+    const title = document.createElement('div');
+    const strong = document.createElement('strong');
+    strong.textContent = `VIN ${group.vin} - ${group.sales.length} ventas`;
+    const meta = document.createElement('div');
+    meta.className = 'archive-meta';
+    meta.textContent = group.sales.map(sale => sale.customer_name || 'Cliente sin nombre').join(' | ');
+    title.append(strong, meta);
+    summary.append(title);
+    const expanded = document.createElement('div');
+    expanded.className = 'archive-expanded';
+    group.sales
+      .slice()
+      .sort((a, b) => new Date(a.transaction_date || a.created_at) - new Date(b.transaction_date || b.created_at))
+      .forEach(sale => {
+        const entry = document.createElement('div');
+        entry.className = 'ops-history-entry';
+        const entryTitle = document.createElement('strong');
+        entryTitle.textContent = `${formatDateDisplay(sale.transaction_date) || 'sin fecha'} | ${sale.customer_name || 'Cliente sin nombre'}`;
+        const entryDetail = document.createElement('span');
+        entryDetail.textContent = [
+          sale.stock_number ? `Stock ${sale.stock_number}` : 'Sin stock',
+          statusLabel(sale.status),
+          sale.contract_number ? `Contrato ${sale.contract_number}` : ''
+        ].filter(Boolean).join(' | ');
+        const open = document.createElement('button');
+        open.type = 'button';
+        open.className = 'secondary';
+        open.textContent = 'Ver ficha';
+        open.addEventListener('click', () => showCaseFileById(sale.id));
+        entry.append(entryTitle, entryDetail, open);
+        expanded.append(entry);
+      });
+    row.append(summary, expanded);
+    container.append(row);
+  });
+}
+
+async function loadDuplicateVins() {
+  if (!supabase || !session?.user) return;
+  controls.showDuplicateVins.disabled = true;
+  setCloudStatus('Buscando VIN repetidos en el archivo central...', '');
+  try {
+    const { data, error } = await supabase
+      .from('doc_sales')
+      .select('id, customer_name, vin, stock_number, contract_number, transaction_date, status, created_at')
+      .not('vin', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(5000);
+    if (error) throw error;
+    const byVin = new Map();
+    (data || []).forEach(sale => {
+      const normalized = normalizeVinForGrouping(sale.vin);
+      if (normalized.length !== 17) return;
+      if (!byVin.has(normalized)) byVin.set(normalized, []);
+      byVin.get(normalized).push(sale);
+    });
+    const groups = [...byVin.entries()]
+      .filter(([, sales]) => sales.length > 1)
+      .map(([vin, sales]) => ({ vin, sales }))
+      .sort((a, b) => b.sales.length - a.sales.length);
+    renderDuplicateVinResults(groups);
+    controls.archiveResults.replaceChildren();
+    setCloudStatus(`${groups.length} VIN repetido(s) encontrado(s), con un total de ${groups.reduce((sum, g) => sum + g.sales.length, 0)} ventas involucradas.`, groups.length ? 'good' : '');
+  } catch (error) {
+    setCloudStatus(`No se pudo cargar el reporte de VIN duplicados: ${error.message || 'revisa Supabase'}`, 'error');
+  } finally {
+    controls.showDuplicateVins.disabled = false;
   }
 }
 
@@ -3286,6 +3381,7 @@ if (!configured) {
   });
   controls.searchArchive.addEventListener('click', () => loadArchive().catch(error => setCloudStatus(error.message, 'error')));
   controls.exportCustomers.addEventListener('click', () => exportCustomersCsv().catch(error => setCloudStatus(error.message, 'error')));
+  controls.showDuplicateVins?.addEventListener('click', () => loadDuplicateVins().catch(error => setCloudStatus(error.message, 'error')));
   controls.adminCreateUser.addEventListener('click', () => saveAdminUser('create').catch(error => setCloudStatus(error.message, 'error')));
   controls.adminInviteUser.addEventListener('click', () => saveAdminUser('invite').catch(error => setCloudStatus(error.message, 'error')));
   controls.importTemplate.addEventListener('click', downloadImportTemplate);

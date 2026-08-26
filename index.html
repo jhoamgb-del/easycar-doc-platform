@@ -496,8 +496,10 @@
             <label>Buscar por cliente, VIN, stock, contrato o email <input id="archiveSearch" autocomplete="off"></label>
             <button type="button" class="secondary" id="searchArchive">Buscar</button>
             <button type="button" class="secondary" id="exportCustomersCsv">Descargar clientes CSV</button>
+            <button type="button" class="secondary" id="showDuplicateVins">Ver VIN duplicados</button>
           </div>
           <div class="archive-results" id="archiveResults"></div>
+          <div class="archive-results" id="duplicateVinResults" hidden></div>
         </section>
         <section class="import-panel" id="importPanel" hidden>
           <h3>Carga masiva de clientes y carros</h3>
@@ -2514,14 +2516,12 @@
         if (result.duplicate) {
           const detail = result.matches.slice(0, 2).map(formatDuplicateVinMatch).join(' / ');
           if (result.critical) {
-            status.textContent = `BANDERA ROJA - VIN DUPLICADO: existe otra venta con el mismo stock o falta confirmar un stock diferente. ${detail}`;
-            status.className = 'status bad';
-            $('vin')?.classList.add('field-error');
+            status.textContent = `AVISO (esto SI se guarda, no bloquea nada): este VIN ya existe en otra venta y falta confirmar un numero de stock diferente para distinguirlas. Ponle un stock nuevo cuando lo tengas. ${detail}`;
           } else {
-            status.textContent = `VIN DUPLICADO - VENTA HISTORICA: permitido porque los stocks son diferentes. Verifica el ciclo anterior. ${detail}`;
-            status.className = 'status warn';
-            $('vin')?.classList.remove('field-error');
+            status.textContent = `AVISO (esto SI se guarda, no bloquea nada): VIN repetido de una venta anterior (posible reposesion, entrega voluntaria o trade-in). Permitido porque el stock es diferente. ${detail}`;
           }
+          status.className = 'status warn';
+          $('vin')?.classList.remove('field-error');
           return;
         }
         status.textContent = 'VIN sin duplicado visible en el expediente central.';
