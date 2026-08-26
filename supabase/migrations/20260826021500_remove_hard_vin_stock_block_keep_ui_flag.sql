@@ -1,0 +1,12 @@
+-- Trade-ins are legitimate: the same VIN can legitimately belong to a
+-- different customer/sale later (repo, voluntary return, trade-in resold).
+-- This hard DB-level block was rejecting those cases before the operator
+-- even had a chance to type a new stock number (autosave fires with
+-- stock_number still null on the very first keystroke of the VIN).
+-- The UI already has a proper non-blocking warning for this
+-- (checkVinDuplicate/BANDERA ROJA in index.html, backed by
+-- checkDuplicateVin in cloud.js) that distinguishes "different stock,
+-- allowed, historical" from "same/missing stock, needs review" without
+-- ever preventing the save. That client-side flag stays as the real
+-- safeguard; this migration just removes the redundant hard block.
+drop trigger if exists doc_sales_enforce_vin_stock_history on public.doc_sales;
