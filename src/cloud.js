@@ -67,6 +67,7 @@ const controls = {
   opsHistoryInsuranceFacts: byId('opsHistoryInsuranceFacts'),
   opsHistoryGpsFacts: byId('opsHistoryGpsFacts'),
   opsHistoryPending: byId('opsHistoryPending'),
+  opsHistoryDocuments: byId('opsHistoryDocuments'),
   opsHistoryInsurance: byId('opsHistoryInsurance'),
   opsHistoryGps: byId('opsHistoryGps'),
   opsHistoryActivityAudit: byId('opsHistoryActivityAudit'),
@@ -155,6 +156,7 @@ function setSessionUi(nextSession) {
     loggedIn ? 'good' : ''
   );
   if (loggedIn) {
+    app.setActiveModule?.('DASHBOARD');
     loadRecentSales();
     loadArchive();
     loadOpsReport();
@@ -1736,7 +1738,7 @@ function latestInterviewCall(operations = []) {
   return latestOperation(operations.filter(operation => operation.module === 'survey'));
 }
 
-function buildOpsProfile(sale, operations = [], activities = []) {
+function buildOpsProfile(sale, operations = [], activities = [], duplicateVinCount = 0) {
   const form = { ...(sale.form_data || {}) };
   form.insurance_status = normalizedInsuranceStatus(form);
   const latest = latestOperatorOperation(operations);
@@ -1863,7 +1865,8 @@ function buildOpsProfile(sale, operations = [], activities = []) {
     insuranceClaimOpen, insuranceCancelled, insuranceInvalidated, insuranceExpired, insuranceRepossession, repoConfirmed,
     insuranceCancelledDays, siniestroOpen, gapClaimOpen, recoveryOpen, noFollowUp, noteProblem, overdue, alerts,
     insuranceDaysSince, gpsDaysSince, gapClaimDays, insuranceClaimDays, daysSinceOps, saleAgeDays,
-    dueToday, unscheduledIssue, critical, severity,
+    dueToday, unscheduledIssue, critical, severity, gpsOverdue,
+    duplicateVin: duplicateVinCount > 1,
     partyClassificationPending,
     driverUnconfirmed: form.insurance_customer_role === 'Conductor agregado' && form.insurance_driver_listed !== 'Si',
     addressProblem: ['Pendiente de verificar', 'Inconsistencia critica'].includes(form.insurance_address_review_status)
@@ -1938,8 +1941,11 @@ function opsVisible(profile) {
   if (opsFilter === 'gps_inactive') return profile.form.gps_device_status === 'Inactivo';
   if (opsFilter === 'outside_florida') return profile.gpsOutsideFlorida;
   if (opsFilter === 'gps_missing') return profile.gpsMissing;
+  if (opsFilter === 'gps_overdue') return profile.gpsOverdue;
+  if (opsFilter === 'duplicate_vin') return profile.duplicateVin;
   if (opsFilter === 'mileage') return profile.gpsMileageExceeded;
   if (opsFilter === 'claims') return profile.siniestroOpen;
+  if (opsFilter === 'claims_open') return profile.insuranceClaimOpen || profile.gapClaimOpen;
   if (opsFilter === 'claims_gap') return profile.siniestroOpen || profile.gapClaimOpen || profile.recoveryOpen;
   if (opsFilter === 'gap_claim') return profile.gapClaimOpen;
   if (opsFilter === 'recovery') return profile.recoveryOpen;
@@ -2190,7 +2196,7 @@ async function loadCaseFile(saleId) {
   ] = await Promise.all([
     supabase
       .from('doc_sales')
-      .select('id, customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at, updated_at')
+      .select('id, customer_name, customer_email, customer_phone, vehicle_description, vin, stock_number, contract_number, transaction_date, status, form_data, created_at, updated_at, doc_sale_documents(id, document_type, storage_path, original_name, created_at)')
       .eq('id', saleId)
       .single(),
     supabase
@@ -2472,6 +2478,27 @@ function showOpsHistory(profile) {
       });
     }
   }
+  if (controls.opsHistoryDocuments) {
+    controls.opsHistoryDocuments.replaceChildren();
+    const documents = profile.sale.doc_sale_documents || [];
+    if (!documents.length) {
+      const empty = document.createElement('span');
+      empty.className = 'archive-meta';
+      empty.textContent = profile.sale.status === 'signed_digital'
+        ? 'Firmado, pendiente de archivo PDF'
+        : 'Aun no hay PDF firmado archivado';
+      controls.opsHistoryDocuments.append(empty);
+    } else {
+      documents.forEach((archivedDocument, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'secondary';
+        button.textContent = archivedDocument.original_name || `Documento firmado ${index + 1}`;
+        button.addEventListener('click', () => openArchivedDocument(archivedDocument.storage_path).catch(error => setCloudStatus(error.message, 'error')));
+        controls.opsHistoryDocuments.append(button);
+      });
+    }
+  }
   appendTimeline(controls.opsHistoryInsurance, allOperations.filter(operation => ['insurance', 'shared'].includes(operationCategory(operation))), 'Todavia no hay verificaciones de seguro registradas.', 'revisiones de seguro registradas');
   appendTimeline(controls.opsHistoryGps, allOperations.filter(operation => ['gps', 'shared'].includes(operationCategory(operation))), 'Todavia no hay verificaciones de GPS registradas.', 'revisiones de GPS registradas');
   appendTimeline(controls.opsHistoryActivityAudit, profile.activityAudit || [], 'Todavia no hay cambios de agenda registrados.');
@@ -2690,7 +2717,13 @@ function renderOpsReport(profiles) {
   const operatorActions = operations.filter(isOperatorAction);
   const today = startOfLocalDay();
   controls.opsSummary.replaceChildren(
-    renderOpsMetric('Expedientes', profiles.length, 'all', 'Clientes y vehiculos'),
+    renderOpsMetric('Monitoreados', profiles.length, 'all', 'Clientes y vehiculos'),
+    renderOpsMetric('Sin GPS', profiles.filter(profile => profile.gpsMissing).length, 'gps_missing', 'Vehiculos sin dispositivo registrado'),
+    renderOpsMetric('Sin seguro', profiles.filter(profile => !profile.form.insurance_policy_number).length, 'insurance_missing', 'Vehiculos sin poliza registrada'),
+    renderOpsMetric('Reclamo abierto', profiles.filter(profile => profile.insuranceClaimOpen || profile.gapClaimOpen).length, 'claims_open', 'Seguro o GAP con reclamo activo'),
+    renderOpsMetric('GPS vencido', profiles.filter(profile => profile.gpsOverdue).length, 'gps_overdue', 'Revision de GPS atrasada'),
+    renderOpsMetric('GPS desconectado', profiles.filter(profile => profile.form.gps_device_status === 'Desconectado').length, 'gps_sos', 'Dispositivo reporta desconectado'),
+    renderOpsMetric('VIN duplicado', profiles.filter(profile => profile.duplicateVin).length, 'duplicate_vin', 'Mismo VIN en mas de una venta'),
     renderOpsMetric('Accion hoy', profiles.filter(profile => profile.dueToday).length, 'agenda', 'Trabajo pendiente o vencido'),
     renderOpsMetric('Seguro', profiles.filter(profile => profile.policyProblem).length, 'insurance', 'Casos que requieren atencion'),
     renderOpsMetric('GPS', profiles.filter(profile => profile.gpsProblem).length, 'gps', 'Casos que requieren atencion'),
@@ -2883,6 +2916,14 @@ async function loadOpsReport() {
     if ((data || []).length < pageSize) break;
   }
 
+  const vinCounts = new Map();
+  sales.forEach(sale => {
+    const normalized = normalizeVinForGrouping(sale.vin);
+    if (!normalized) return;
+    vinCounts.set(normalized, (vinCounts.get(normalized) || 0) + 1);
+  });
+  const duplicateVinCountFor = sale => vinCounts.get(normalizeVinForGrouping(sale.vin)) || 0;
+
   const operations = [];
   for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await supabase
@@ -2894,7 +2935,7 @@ async function loadOpsReport() {
     if (error) {
       if (error.code === '42P01' || /doc_sale_operations|relation/i.test(error.message || '')) {
         setCloudStatus('Control GPS / Seguro visible. Falta activar la tabla de auditoria en Supabase para guardar historial del operador.', 'error');
-        opsProfilesCache = sales.map(sale => buildOpsProfile(sale, []));
+        opsProfilesCache = sales.map(sale => buildOpsProfile(sale, [], [], duplicateVinCountFor(sale)));
         opsLoadedAt = new Date();
         renderOpsReport(opsProfilesCache);
         return;
@@ -2945,7 +2986,7 @@ async function loadOpsReport() {
     if (!activitiesBySale.has(activity.sale_id)) activitiesBySale.set(activity.sale_id, []);
     activitiesBySale.get(activity.sale_id).push(activity);
   });
-  opsProfilesCache = sales.map(sale => buildOpsProfile(sale, bySale.get(sale.id) || [], activitiesBySale.get(sale.id) || []));
+  opsProfilesCache = sales.map(sale => buildOpsProfile(sale, bySale.get(sale.id) || [], activitiesBySale.get(sale.id) || [], duplicateVinCountFor(sale)));
   opsLoadedAt = new Date();
   renderOpsReport(opsProfilesCache);
 }

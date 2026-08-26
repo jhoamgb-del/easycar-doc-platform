@@ -45,7 +45,6 @@ const DOC_TITLES = {
   conditional: 'Conditional Delivery',
   communication: 'Communication Authorization',
   creditapp: 'Credit Application',
-  w9: 'Substitute Form W-9',
   voluntary_notice: 'Voluntary Return Agreement',
   voluntary_condition: 'Vehicle Condition & Photos',
   repo_notice: 'Repossession Notice',
