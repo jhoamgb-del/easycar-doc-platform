@@ -2150,7 +2150,7 @@ function operationCategory(operation) {
   return 'other';
 }
 
-function appendTimeline(container, operations, emptyText) {
+function appendTimeline(container, operations, emptyText, countLabel = 'registros') {
   if (!container) return;
   container.replaceChildren();
   if (!operations.length) {
@@ -2160,6 +2160,10 @@ function appendTimeline(container, operations, emptyText) {
     container.append(empty);
     return;
   }
+  const count = document.createElement('p');
+  count.className = 'ops-history-count';
+  count.textContent = `Total: ${operations.length} ${countLabel}.`;
+  container.append(count);
   operations.forEach(operation => {
     const entry = document.createElement('div');
     entry.className = 'ops-history-entry';
@@ -2468,8 +2472,8 @@ function showOpsHistory(profile) {
       });
     }
   }
-  appendTimeline(controls.opsHistoryInsurance, allOperations.filter(operation => ['insurance', 'shared'].includes(operationCategory(operation))), 'Todavia no hay verificaciones de seguro registradas.');
-  appendTimeline(controls.opsHistoryGps, allOperations.filter(operation => ['gps', 'shared'].includes(operationCategory(operation))), 'Todavia no hay verificaciones de GPS registradas.');
+  appendTimeline(controls.opsHistoryInsurance, allOperations.filter(operation => ['insurance', 'shared'].includes(operationCategory(operation))), 'Todavia no hay verificaciones de seguro registradas.', 'revisiones de seguro registradas');
+  appendTimeline(controls.opsHistoryGps, allOperations.filter(operation => ['gps', 'shared'].includes(operationCategory(operation))), 'Todavia no hay verificaciones de GPS registradas.', 'revisiones de GPS registradas');
   appendTimeline(controls.opsHistoryActivityAudit, profile.activityAudit || [], 'Todavia no hay cambios de agenda registrados.');
   appendTimeline(controls.opsHistoryOther, allOperations.filter(operation => operationCategory(operation) === 'other'), 'No hay otras actividades registradas.');
   if (!controls.opsHistoryDialog.open) controls.opsHistoryDialog.showModal();
