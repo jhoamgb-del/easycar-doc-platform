@@ -2045,10 +2045,11 @@ function renderOpsSubfilters() {
   controls.opsSubfilters.hidden = !group;
 }
 
-function renderOpsMetric(label, value, filter = '', detail = '') {
+function renderOpsMetric(label, value, filter = '', detail = '', tone = '') {
   const box = document.createElement(filter ? 'button' : 'div');
   if (filter) box.type = 'button';
   box.className = 'ops-metric';
+  if (tone) box.classList.add(`ops-metric-${tone}`);
   if (filter) {
     box.dataset.opsFilter = filter;
     box.classList.toggle('active', opsFilter === filter || activeOpsGroup() === filter);
@@ -2766,19 +2767,31 @@ function renderOpsReport(profiles) {
   const operations = profiles.flatMap(profile => profile.operations || []);
   const operatorActions = operations.filter(isOperatorAction);
   const today = startOfLocalDay();
+  const metricTone = (count, level = 'alert') => count > 0 ? level : '';
+  const sinGps = profiles.filter(profile => profile.gpsMissing).length;
+  const sinSeguro = profiles.filter(profile => !profile.form.insurance_policy_number).length;
+  const reclamoAbierto = profiles.filter(profile => profile.insuranceClaimOpen || profile.gapClaimOpen).length;
+  const gpsVencido = profiles.filter(profile => profile.gpsOverdue).length;
+  const gpsDesconectado = profiles.filter(profile => profile.form.gps_device_status === 'Desconectado').length;
+  const vinDuplicado = profiles.filter(profile => profile.duplicateVin).length;
+  const accionHoy = profiles.filter(profile => profile.dueToday).length;
+  const seguroProblema = profiles.filter(profile => profile.policyProblem).length;
+  const gpsProblema = profiles.filter(profile => profile.gpsProblem).length;
+  const siniestrosGap = profiles.filter(profile => profile.siniestroOpen || profile.gapClaimOpen || profile.recoveryOpen).length;
+  const auditoria = profiles.filter(profile => profile.noFollowUp || profile.noteProblem).length;
   controls.opsSummary.replaceChildren(
     renderOpsMetric('Monitoreados', profiles.length, 'all', 'Clientes y vehiculos'),
-    renderOpsMetric('Sin GPS', profiles.filter(profile => profile.gpsMissing).length, 'gps_missing', 'Vehiculos sin dispositivo registrado'),
-    renderOpsMetric('Sin seguro', profiles.filter(profile => !profile.form.insurance_policy_number).length, 'insurance_missing', 'Vehiculos sin poliza registrada'),
-    renderOpsMetric('Reclamo abierto', profiles.filter(profile => profile.insuranceClaimOpen || profile.gapClaimOpen).length, 'claims_open', 'Seguro o GAP con reclamo activo'),
-    renderOpsMetric('GPS vencido', profiles.filter(profile => profile.gpsOverdue).length, 'gps_overdue', 'Revision de GPS atrasada'),
-    renderOpsMetric('GPS desconectado', profiles.filter(profile => profile.form.gps_device_status === 'Desconectado').length, 'gps_sos', 'Dispositivo reporta desconectado'),
-    renderOpsMetric('VIN duplicado', profiles.filter(profile => profile.duplicateVin).length, 'duplicate_vin', 'Mismo VIN en mas de una venta'),
-    renderOpsMetric('Accion hoy', profiles.filter(profile => profile.dueToday).length, 'agenda', 'Trabajo pendiente o vencido'),
-    renderOpsMetric('Seguro', profiles.filter(profile => profile.policyProblem).length, 'insurance', 'Casos que requieren atencion'),
-    renderOpsMetric('GPS', profiles.filter(profile => profile.gpsProblem).length, 'gps', 'Casos que requieren atencion'),
-    renderOpsMetric('Siniestros / GAP', profiles.filter(profile => profile.siniestroOpen || profile.gapClaimOpen || profile.recoveryOpen).length, 'claims_gap', 'Reclamos y recuperaciones'),
-    renderOpsMetric('Auditoria', profiles.filter(profile => profile.noFollowUp || profile.noteProblem).length, 'operator', `${operatorActions.filter(operation => new Date(operation.created_at || 0) >= today).length} acciones hoy`)
+    renderOpsMetric('Sin GPS', sinGps, 'gps_missing', 'Vehiculos sin dispositivo registrado', metricTone(sinGps)),
+    renderOpsMetric('Sin seguro', sinSeguro, 'insurance_missing', 'Vehiculos sin poliza registrada', metricTone(sinSeguro)),
+    renderOpsMetric('Reclamo abierto', reclamoAbierto, 'claims_open', 'Seguro o GAP con reclamo activo', metricTone(reclamoAbierto)),
+    renderOpsMetric('GPS vencido', gpsVencido, 'gps_overdue', 'Revision de GPS atrasada', metricTone(gpsVencido)),
+    renderOpsMetric('GPS desconectado', gpsDesconectado, 'gps_sos', 'Dispositivo reporta desconectado', metricTone(gpsDesconectado)),
+    renderOpsMetric('VIN duplicado', vinDuplicado, 'duplicate_vin', 'Mismo VIN en mas de una venta', metricTone(vinDuplicado, 'warn')),
+    renderOpsMetric('Accion hoy', accionHoy, 'agenda', 'Trabajo pendiente o vencido', metricTone(accionHoy, 'warn')),
+    renderOpsMetric('Seguro', seguroProblema, 'insurance', 'Casos que requieren atencion', metricTone(seguroProblema, 'warn')),
+    renderOpsMetric('GPS', gpsProblema, 'gps', 'Casos que requieren atencion', metricTone(gpsProblema, 'warn')),
+    renderOpsMetric('Siniestros / GAP', siniestrosGap, 'claims_gap', 'Reclamos y recuperaciones', metricTone(siniestrosGap)),
+    renderOpsMetric('Auditoria', auditoria, 'operator', `${operatorActions.filter(operation => new Date(operation.created_at || 0) >= today).length} acciones hoy`, metricTone(auditoria, 'warn'))
   );
   const criticalCount = profiles.filter(profile => profile.critical).length;
   const unscheduledCount = profiles.filter(profile => profile.unscheduledIssue).length;

@@ -38,16 +38,22 @@
     main { width: min(1180px, calc(100% - 24px)); margin: 22px auto 42px; }
     .panel, .doc { background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(18,35,61,.07); }
     .panel { padding: 22px; margin-bottom: 20px; }
+    .panel.app-shell { display: flex; align-items: flex-start; gap: 22px; padding: 18px; }
+    .app-content { flex: 1 1 auto; min-width: 0; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 18px; }
     .toolbar p { margin: 0; color: var(--muted); line-height: 1.4; }
-    .deal-mode { display: grid; gap: 10px; margin: 0 0 18px; padding: 14px; border: 1px solid #c7d4e5; border-radius: 8px; background: #f8fbff; }
-    .deal-mode strong { color: var(--dark); font-size: .92rem; }
-    .mode-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
-    .mode-tab { display: grid; gap: 5px; min-height: 74px; padding: 11px 12px; border: 2px solid #c7d4e5; border-radius: 7px; background: #fff; color: var(--dark); cursor: pointer; }
+    .deal-mode { flex: 0 0 220px; display: grid; gap: 4px; align-content: start; position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow-y: auto; padding-right: 4px; }
+    .deal-mode strong { display: block; margin: 4px 6px 6px; color: var(--muted); font-size: .68rem; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+    .sidebar-nav-label { display: block; margin: 14px 6px 6px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: .68rem; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+    .sidebar-nav-label:first-of-type { margin-top: 4px; padding-top: 0; border-top: 0; }
+    .mode-tabs { display: grid; gap: 2px; }
+    .mode-tab { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; min-height: 40px; padding: 8px 10px; border: 0; border-left: 3px solid transparent; border-radius: 5px; background: transparent; color: var(--dark); cursor: pointer; }
+    .mode-tab:hover { background: #eef4fb; }
     .mode-tab input { position: absolute; width: 1px; height: 1px; min-height: 0; margin: 0; padding: 0; opacity: 0; pointer-events: none; }
-    .mode-tab span { font-weight: 900; letter-spacing: .05em; }
-    .mode-tab small { color: var(--muted); font-size: .76rem; line-height: 1.25; text-transform: none; }
-    .mode-tab:has(input:checked) { border-color: var(--blue); background: #eaf3ff; box-shadow: inset 0 0 0 1px rgba(21,85,166,.18); }
+    .mode-tab span { grid-column: 2; font-weight: 800; font-size: .81rem; letter-spacing: .02em; }
+    .mode-tab small { display: none; }
+    .mode-tab:has(input:checked) { border-left-color: var(--blue); background: #eaf3ff; }
+    .mode-tab:has(input:checked) span { color: var(--blue); }
     .mode-tab.disabled { opacity: .62; cursor: not-allowed; }
     .mode-summary { margin: 0; color: #34445e; font-size: .86rem; line-height: 1.35; }
     .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 16px; }
@@ -74,7 +80,26 @@
     body:not([data-active-module="INSURANCE_GPS"]) .insurance-only { display: none !important; }
     body:not([data-active-module="DASHBOARD"]) .ops-report-panel { display: none !important; }
     body[data-active-module="DASHBOARD"] .toolbar,
-    body[data-active-module="DASHBOARD"] #saleForm { display: none !important; }
+    body[data-active-module="DASHBOARD"] #saleForm,
+    body[data-active-module="ARCHIVE"] .toolbar,
+    body[data-active-module="ARCHIVE"] #saleForm,
+    body[data-active-module="IMPORT"] .toolbar,
+    body[data-active-module="IMPORT"] #saleForm,
+    body[data-active-module="ADMIN"] .toolbar,
+    body[data-active-module="ADMIN"] #saleForm { display: none !important; }
+    body:not([data-active-module="ARCHIVE"]) #cloudRecent,
+    body:not([data-active-module="ARCHIVE"]) #archivePanel { display: none !important; }
+    body:not([data-active-module="IMPORT"]) #importPanel { display: none !important; }
+    body:not([data-active-module="ADMIN"]) #adminPanel { display: none !important; }
+    body:has(#adminPanel[hidden]) #adminNavItem { display: none !important; }
+    body[data-active-module="DASHBOARD"] .workflow-actions,
+    body[data-active-module="DASHBOARD"] #signatureFlowNote,
+    body[data-active-module="ARCHIVE"] .workflow-actions,
+    body[data-active-module="ARCHIVE"] #signatureFlowNote,
+    body[data-active-module="IMPORT"] .workflow-actions,
+    body[data-active-module="IMPORT"] #signatureFlowNote,
+    body[data-active-module="ADMIN"] .workflow-actions,
+    body[data-active-module="ADMIN"] #signatureFlowNote { display: none !important; }
     body[data-active-module="INSURANCE_GPS"] .sale-operation-only,
     body[data-active-module="INSURANCE_GPS"] .not-voluntary,
     body[data-active-module="INSURANCE_GPS"] .voluntary-only,
@@ -155,11 +180,13 @@
     .import-actions button { min-height: 42px; }
     .ops-report-panel { grid-column: 1 / -1; border-top: 1px solid #d5e1f1; padding-top: 12px; display: grid; gap: 10px; }
     .ops-report-panel h3 { margin: 0; font-size: .9rem; color: var(--dark); }
-    .ops-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
-    .ops-metric { min-height: 84px; padding: 11px; border: 1px solid #d5e1f1; border-radius: 6px; background: #fff; text-align: left; cursor: pointer; }
-    .ops-metric.active { border-color: var(--blue); background: #eaf2ff; box-shadow: inset 4px 0 0 var(--blue); }
-    .ops-metric strong { display: block; color: var(--dark); font-size: 1.25rem; }
-    .ops-metric span { display: block; color: var(--muted); font-size: .74rem; font-weight: 800; text-transform: uppercase; }
+    .ops-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    .ops-metric { min-height: 92px; padding: 14px; border: 1px solid #d5e1f1; border-left: 4px solid #c7d4e5; border-radius: 6px; background: #fff; text-align: left; cursor: pointer; }
+    .ops-metric.active { border-color: var(--blue); border-left-color: var(--blue); background: #eaf2ff; }
+    .ops-metric.ops-metric-alert { border-left-color: var(--red); }
+    .ops-metric.ops-metric-warn { border-left-color: #c77a00; }
+    .ops-metric strong { display: block; color: var(--dark); font-size: 1.6rem; line-height: 1.1; }
+    .ops-metric span { display: block; margin-top: 5px; color: var(--muted); font-size: .74rem; font-weight: 800; text-transform: uppercase; }
     .ops-metric em { display: block; margin-top: 4px; color: var(--muted); font-size: .72rem; font-style: normal; line-height: 1.25; }
     .ops-filters { display: flex; gap: 8px; flex-wrap: wrap; }
     .ops-filters button { min-height: 34px; padding: 0 10px; }
@@ -315,7 +342,12 @@
       .schedule-grid .num { grid-column: 1; grid-row: span 5; height: 100%; min-height: 228px; }
       .schedule-grid label { grid-column: 2; }
       .actions button { width: 100%; }
-      .mode-tabs { grid-template-columns: 1fr; }
+      .panel.app-shell { display: block; padding: 12px; }
+      .deal-mode { position: static; flex: none; max-height: none; overflow: visible; display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 6px; margin: 0 0 14px; padding: 4px 2px 10px; border-bottom: 1px solid var(--line); }
+      .deal-mode strong, .sidebar-nav-label { display: none; }
+      .mode-tabs { display: flex; flex-wrap: nowrap; gap: 6px; }
+      .mode-tab { flex: 0 0 auto; border-left: 0; border-bottom: 3px solid transparent; white-space: nowrap; }
+      .mode-tab:has(input:checked) { border-left-color: transparent; border-bottom-color: var(--blue); }
       .docs-wrap, .doc { min-width: 0; max-width: 100%; }
       .doc { width: 100%; padding: 20px; overflow: hidden; }
       .doc table { max-width: 100%; table-layout: auto; }
@@ -459,7 +491,66 @@
     </div>
   </header>
   <main>
-    <section class="panel">
+    <section class="panel app-shell">
+      <div class="deal-mode private-workspace" aria-label="Navegacion principal">
+        <strong>DOC EASYCAR</strong>
+        <div class="mode-tabs">
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_module_dashboard" value="DASHBOARD">
+            <span>PANEL DE CONTROL</span>
+          </label>
+        </div>
+        <span class="sidebar-nav-label">Tipo de venta</span>
+        <div class="mode-tabs">
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_type_bhph" value="BHPH" checked>
+            <span>BHPH</span>
+          </label>
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_type_bank" value="BANCO">
+            <span>BANCO</span>
+          </label>
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_type_voluntary" value="VOLUNTARY">
+            <span>ENTREGA VOLUNTARIA</span>
+          </label>
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_type_repo" value="REPO">
+            <span>REPOSICION</span>
+          </label>
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_module_insurance" value="INSURANCE_GPS">
+            <span>GPS Y SEGURO</span>
+          </label>
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_module_interview" value="INTERVIEW">
+            <span>ENTREVISTA</span>
+          </label>
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_module_mechanical" value="MECHANICAL">
+            <span>MECANICA</span>
+          </label>
+        </div>
+        <span class="sidebar-nav-label private-workspace">Datos y clientes</span>
+        <div class="mode-tabs private-workspace">
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_module_archive" value="ARCHIVE">
+            <span>ARCHIVO DE CLIENTES</span>
+          </label>
+          <label class="mode-tab">
+            <input type="radio" name="sale_type_choice" id="sale_module_import" value="IMPORT">
+            <span>CARGA MASIVA</span>
+          </label>
+          <label class="mode-tab" id="adminNavItem">
+            <input type="radio" name="sale_type_choice" id="sale_module_admin" value="ADMIN">
+            <span>ADMINISTRACION</span>
+          </label>
+        </div>
+        <input type="hidden" id="sale_type" value="BHPH">
+        <input type="hidden" id="active_module" value="SALE">
+        <p class="mode-summary" id="modeSummary">BHPH: se generan todos los documentos del paquete.</p>
+      </div>
+      <div class="app-content">
       <section class="cloud-panel" aria-labelledby="cloudTitle">
         <div>
           <h2 id="cloudTitle">Acceso del vendedor y expediente central</h2>
@@ -487,7 +578,7 @@
           <button type="button" class="secondary" id="newCloudSale">Limpiar / nueva venta</button>
           <button type="button" id="sendForSignature">Enviar firma digital al cliente</button>
         </div>
-        <p class="storage-note">Firma digital: el contrato llega al email del cliente, pero el codigo obligatorio para firmar llega por SMS al telefono del cliente. EasyCar queda como contacto de respuesta y copia final.</p>
+        <p class="storage-note" id="signatureFlowNote">Firma digital: el contrato llega al email del cliente, pero el codigo obligatorio para firmar llega por SMS al telefono del cliente. EasyCar queda como contacto de respuesta y copia final.</p>
         <div class="signature-result" id="signatureResult"></div>
         <section class="cloud-recent" id="cloudRecent" hidden>
           <h3>Ventas centrales recientes</h3>
@@ -540,54 +631,6 @@
         <button type="button" class="sale-operation-only" onclick="window.print()">Imprimir / guardar PDF</button>
         <input type="file" id="markSignedPhysicalFile" class="sale-operation-only" accept="application/pdf,image/jpeg,image/png" hidden>
         <button type="button" class="sale-operation-only secondary" id="markSignedPhysical">Marcar como firmada y notificar</button>
-      </div>
-      <div class="deal-mode private-workspace" aria-label="Tipo de venta">
-        <strong>Tipo de venta</strong>
-        <div class="mode-tabs">
-          <label class="mode-tab">
-            <input type="radio" name="sale_type_choice" id="sale_module_dashboard" value="DASHBOARD">
-            <span>PANEL DE CONTROL</span>
-            <small>Vista general de todos los vehiculos: seguro, GPS, siniestros y VIN duplicados.</small>
-          </label>
-          <label class="mode-tab">
-            <input type="radio" name="sale_type_choice" id="sale_type_bhph" value="BHPH" checked>
-            <span>BHPH</span>
-            <small>Paquete completo EasyCar para venta Buy Here Pay Here.</small>
-          </label>
-          <label class="mode-tab">
-            <input type="radio" name="sale_type_choice" id="sale_type_bank" value="BANCO">
-            <span>BANCO</span>
-            <small>Solo inicial diferida y autorizacion de tarjeta.</small>
-          </label>
-          <label class="mode-tab">
-            <input type="radio" name="sale_type_choice" id="sale_type_voluntary" value="VOLUNTARY">
-            <span>ENTREGA VOLUNTARIA</span>
-            <small>Devolucion voluntaria, cuenta, payoff, cuotas y fotos.</small>
-          </label>
-          <label class="mode-tab">
-            <input type="radio" name="sale_type_choice" id="sale_type_repo" value="REPO">
-            <span>REPOSICION</span>
-            <small>Reposesion, aviso de venta privada, payoff y deficiencia.</small>
-          </label>
-          <label class="mode-tab">
-            <input type="radio" name="sale_type_choice" id="sale_module_insurance" value="INSURANCE_GPS">
-            <span>GPS Y SEGURO</span>
-            <small>Poliza, GPS, GAP, siniestro, ubicacion y seguimiento.</small>
-          </label>
-          <label class="mode-tab">
-            <input type="radio" name="sale_type_choice" id="sale_module_interview" value="INTERVIEW">
-            <span>ENTREVISTA</span>
-            <small>Llamada del dia siguiente: confirma referencias.</small>
-          </label>
-          <label class="mode-tab">
-            <input type="radio" name="sale_type_choice" id="sale_module_mechanical" value="MECHANICAL">
-            <span>MECANICA</span>
-            <small>Seguimiento del estado fisico y mecanico del vehiculo.</small>
-          </label>
-        </div>
-        <input type="hidden" id="sale_type" value="BHPH">
-        <input type="hidden" id="active_module" value="SALE">
-        <p class="mode-summary" id="modeSummary">BHPH: se generan todos los documentos del paquete.</p>
       </div>
       <section class="ops-report-panel private-workspace" id="opsReportPanel" hidden>
         <h3>Control GPS / Seguro</h3>
@@ -1193,6 +1236,7 @@
           <div id="salesList" class="sales-list"></div>
         </section>
       </form>
+      </div>
     </section>
 
     <p class="print-note private-workspace document-output"><strong>Documentos generados abajo desde los originales.</strong> Revisa cada documento antes de imprimir. Los documentos largos pueden ocupar mas de una pagina para mantener buena lectura.</p>
@@ -1529,7 +1573,10 @@
       INSURANCE_GPS: [],
       MECHANICAL: [],
       INTERVIEW: [],
-      DASHBOARD: []
+      DASHBOARD: [],
+      ARCHIVE: [],
+      IMPORT: [],
+      ADMIN: []
     };
     const MODE_COPY = {
       BHPH: 'BHPH: se generan todos los documentos del paquete.',
@@ -1539,7 +1586,10 @@
       INSURANCE_GPS: 'GPS Y SEGURO: usa el mismo cliente, VIN y vehiculo del expediente para controlar poliza, GPS, GAP y siniestros.',
       MECHANICAL: 'MECANICA: usa el mismo cliente, VIN y vehiculo del expediente para registrar el estado fisico y mecanico del carro.',
       INTERVIEW: 'ENTREVISTA: llamada del dia siguiente a la venta para confirmar referencias laborales y personales del cliente.',
-      DASHBOARD: 'PANEL DE CONTROL: vista general de todos los vehiculos -- seguro, GPS, siniestros y VIN duplicados.'
+      DASHBOARD: 'PANEL DE CONTROL: vista general de todos los vehiculos -- seguro, GPS, siniestros y VIN duplicados.',
+      ARCHIVE: 'ARCHIVO DE CLIENTES: busca por cliente, VIN, stock, contrato o email; descarga el CSV o revisa VIN duplicados.',
+      IMPORT: 'CARGA MASIVA: sube un CSV con clientes y vehiculos para crear varios expedientes a la vez.',
+      ADMIN: 'ADMINISTRACION: crea e invita usuarios, asigna roles.'
     };
     const GOOGLE_REVIEW_URL = '';
     const INTEGRATION_NOTICE = 'PART OF SIGNED CONTRACT / PARTE INTEGRANTE DEL CONTRATO FIRMADO';
@@ -1598,7 +1648,7 @@
       if (normalized) field.value = normalized;
       return normalized;
     }
-    const STANDALONE_MODULES = ['INSURANCE_GPS', 'MECHANICAL', 'INTERVIEW', 'DASHBOARD'];
+    const STANDALONE_MODULES = ['INSURANCE_GPS', 'MECHANICAL', 'INTERVIEW', 'DASHBOARD', 'ARCHIVE', 'IMPORT', 'ADMIN'];
     function modeCopyKey() {
       return STANDALONE_MODULES.includes(activeModule()) ? activeModule() : currentSaleType();
     }
@@ -1614,6 +1664,9 @@
       if (normalized === 'MECHANICAL' && $('sale_module_mechanical')) $('sale_module_mechanical').checked = true;
       if (normalized === 'INTERVIEW' && $('sale_module_interview')) $('sale_module_interview').checked = true;
       if (normalized === 'DASHBOARD' && $('sale_module_dashboard')) $('sale_module_dashboard').checked = true;
+      if (normalized === 'ARCHIVE' && $('sale_module_archive')) $('sale_module_archive').checked = true;
+      if (normalized === 'IMPORT' && $('sale_module_import')) $('sale_module_import').checked = true;
+      if (normalized === 'ADMIN' && $('sale_module_admin')) $('sale_module_admin').checked = true;
       renderDocs();
       renderInterviewScript();
     }
@@ -3030,6 +3083,9 @@
     $('sale_module_mechanical').addEventListener('change', () => setActiveModule('MECHANICAL'));
     $('sale_module_interview').addEventListener('change', () => setActiveModule('INTERVIEW'));
     $('sale_module_dashboard').addEventListener('change', () => setActiveModule('DASHBOARD'));
+    $('sale_module_archive').addEventListener('change', () => setActiveModule('ARCHIVE'));
+    $('sale_module_import').addEventListener('change', () => setActiveModule('IMPORT'));
+    $('sale_module_admin').addEventListener('change', () => setActiveModule('ADMIN'));
     $('saveMechanicalReview')?.addEventListener('click', saveMechanicalReviewHandler);
     $('saveInterviewCall')?.addEventListener('click', saveInterviewCallHandler);
     $('copyInterviewScript')?.addEventListener('click', () => copyPlainText(interviewScriptText(), 'Guion', setInterviewStatus));
