@@ -118,6 +118,7 @@ let realtimeRefreshTimer = null;
 let currentProfileRole = '';
 let opsCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let currentHistoryProfile = null;
+let wasLoggedIn = false;
 
 function setCloudStatus(message, tone = '') {
   controls.status.textContent = message;
@@ -159,7 +160,13 @@ function setSessionUi(nextSession) {
     loggedIn ? 'good' : ''
   );
   if (loggedIn) {
-    app.setActiveModule?.('DASHBOARD');
+    // setSessionUi() runs on every auth event, not just an actual sign-in --
+    // Supabase silently fires TOKEN_REFRESHED in the background roughly
+    // every hour (and on tab focus/reconnect), which used to force-jump the
+    // operator back to the Dashboard tab mid-task, discarding whatever
+    // client/module they were working in. Only jump to Dashboard on the
+    // real signed-out -> signed-in transition.
+    if (!wasLoggedIn) app.setActiveModule?.('DASHBOARD');
     loadRecentSales();
     loadArchive();
     loadOpsReport();
@@ -182,6 +189,7 @@ function setSessionUi(nextSession) {
     controls.opsResults?.replaceChildren();
     unsubscribeFromCentralUpdates();
   }
+  wasLoggedIn = loggedIn;
 }
 
 function unsubscribeFromCentralUpdates() {
