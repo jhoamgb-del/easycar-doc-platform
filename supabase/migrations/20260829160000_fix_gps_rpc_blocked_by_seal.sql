@@ -1,0 +1,33 @@
+-- The seal added in 20260826221500 (sales_update RLS: no UPDATE once a
+-- sale is signed) had an unintended side effect: doc_save_insurance_gps_event
+-- runs `security invoker` (set that way in 20260725212420), so its internal
+-- `update public.doc_sales ...` is itself subject to sales_update RLS. On a
+-- SIGNED sale -- the normal, expected state for ongoing GPS/insurance/
+-- mechanical/interview monitoring, which is meant to keep happening for the
+-- life of the loan -- that UPDATE silently matched 0 rows. Postgres does not
+-- error on a 0-row UPDATE, so the RPC proceeded to insert the audit
+-- operation row (unaffected, no seal there) and returned success. The
+-- operator saw "Revision registrada" but form_data was never actually
+-- written; reopening the sale later showed the old data -- reported as
+-- "I update GPS info, come back, and everything is erased."
+--
+-- Fix: revert the RPC to `security definer` so its internal UPDATE bypasses
+-- the row-level seal. This is safe because the function already does its
+-- own explicit authorization check before touching anything
+-- (`sale.created_by = caller_id or doc_can_manage_all_sales()`), which is
+-- the real access boundary for "who can log a GPS/insurance/mechanical/
+-- interview operation" -- independent of whether the sale happens to be
+-- signed. The seal itself is untouched and still fully blocks the OTHER
+-- path (saveSale()'s direct client-side `.update()`, used by "Editar
+-- venta" for core customer/vehicle/payment fields) on signed sales, since
+-- that path goes through PostgREST as the authenticated role and is not
+-- security definer.
+--
+-- Verified in a rolled-back transaction before applying: with this change,
+-- calling the RPC against a signed_digital test sale as a non-owner
+-- manager-role user successfully updated form_data (gps_device_status
+-- Activo -> Inactivo); a direct `update doc_sales set customer_phone = ...`
+-- against the same signed sale was still correctly rejected (0 rows
+-- changed) both before and after this change.
+alter function public.doc_save_insurance_gps_event(uuid, jsonb, jsonb)
+  security definer;
