@@ -110,6 +110,7 @@ let opsProfilesCache = [];
 let opsLoadedAt = null;
 let autosaveTimer = null;
 let autosaveGeneration = 0;
+let pendingAutosaveFormData = null;
 let saleInsertPromise = null;
 let saleUpdatePromise = Promise.resolve();
 let realtimeChannel = null;
@@ -520,12 +521,36 @@ function scheduleAutoSave(formData) {
   const targetSaleId = currentSaleId;
   const targetGeneration = autosaveGeneration;
   clearTimeout(autosaveTimer);
+  pendingAutosaveFormData = formData;
   autosaveTimer = window.setTimeout(() => {
+    autosaveTimer = null;
+    pendingAutosaveFormData = null;
     if (targetGeneration !== autosaveGeneration || targetSaleId !== currentSaleId) return;
     saveSale(formData, { quiet: true })
       .then(() => app.setSaveStatus?.('Cambios guardados automaticamente en el expediente central.', 'good'))
       .catch(error => app.setSaveStatus?.(`No se pudo guardar automaticamente: ${error.message}`, 'warn'));
   }, 1100);
+}
+
+// Navigating away (opening a different sale, starting a new one, closing the
+// tab) used to cancel any pending autosave outright -- setCurrentSale() clears
+// autosaveTimer without ever running it, so edits typed less than 1.1s before
+// the navigation were silently dropped even though Supabase never saw them.
+// Every place that's about to replace or abandon the current form must flush
+// first so that window can never lose data.
+async function flushAutosave() {
+  if (!autosaveTimer) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = null;
+  const formData = pendingAutosaveFormData;
+  pendingAutosaveFormData = null;
+  if (!formData) return;
+  try {
+    await saveSale(formData, { quiet: true });
+    app.setSaveStatus?.('Cambios guardados automaticamente en el expediente central.', 'good');
+  } catch (error) {
+    app.setSaveStatus?.(`No se pudo guardar automaticamente: ${error.message}`, 'warn');
+  }
 }
 
 function normalizeHeader(value) {
@@ -1210,6 +1235,7 @@ async function saveInterviewCall(formData) {
 }
 
 async function loadSale(id, { module = '', scrollTarget = 'clientSection' } = {}) {
+  await flushAutosave();
   const { data, error } = await supabase.from('doc_sales').select('*').eq('id', id).single();
   if (error) throw error;
   const formData = { ...(data.form_data || {}) };
@@ -3432,7 +3458,8 @@ async function saveRecoveredPassword() {
   }
 }
 
-function newSale() {
+async function newSale() {
+  await flushAutosave();
   setCurrentSale(null);
   app.clearForm();
   controls.signatureResult.classList.remove('visible');
@@ -3442,6 +3469,11 @@ function newSale() {
 function clearCurrentSale() {
   setCurrentSale(null);
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushAutosave();
+});
+window.addEventListener('pagehide', () => { flushAutosave(); });
 
 window.EasyCarCloud = {
   saveSale,
