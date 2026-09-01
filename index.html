@@ -392,7 +392,7 @@
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
-      .site-header, .panel, .print-note, .doc-nav { display: none; }
+      .site-header, .panel, .panel.app-shell, .print-note, .doc-nav { display: none; }
       main { width: 100%; margin: 0; }
       .docs-wrap { gap: 0; }
       .doc {
@@ -1315,7 +1315,10 @@
             'Ninguna declaracion verbal cambia este documento escrito. Cualquier acuerdo para perdonar, reducir, saldar o modificar la cuenta debe constar por escrito y estar firmado por EASYCAR LLC.'
           ]] },
           { type: 'p', text: 'SIGNATURES / FIRMAS' },
-          { type: 'table', rows: [['DEBTOR / CLIENTE', 'EASYCAR LLC OPERATOR / OPERADOR']] },
+          { type: 'table', rows: [[
+            'DEBTOR / CLIENTE:\nSign/Firma: ______________________________________\nName/Nombre: ___________________________________\nDate/Fecha: ____/____/______',
+            'EASYCAR LLC OPERATOR / OPERADOR:\nSign/Firma: ______________________________________\nName/Nombre: ___________________________________\nDate/Fecha: ____/____/______'
+          ]] },
           { type: 'p', text: 'EASYCAR LLC | 7581 NW 50 ST, Miami, Florida 33166 | This document is part of the signed vehicle contract and recovery file.' }
         ]
       },
@@ -1351,7 +1354,10 @@
             'Se reservan cuatro fotos obligatorias para el expediente de devolucion: frente, trasera, lado/interior y detalle de odometro/VIN/dano.'
           ]] },
           { type: 'p', text: 'SIGNATURES / FIRMAS' },
-          { type: 'table', rows: [['DEBTOR / CLIENTE', 'EASYCAR LLC OPERATOR / OPERADOR']] },
+          { type: 'table', rows: [[
+            'DEBTOR / CLIENTE:\nSign/Firma: ______________________________________\nName/Nombre: ___________________________________\nDate/Fecha: ____/____/______',
+            'EASYCAR LLC OPERATOR / OPERADOR:\nSign/Firma: ______________________________________\nName/Nombre: ___________________________________\nDate/Fecha: ____/____/______'
+          ]] },
           { type: 'p', text: 'INTERNAL OPERATOR CHECKLIST: Verify debtor identity. Confirm default status in CRM before accepting keys. Do not argue, threaten, or make verbal promises of debt forgiveness. Take comprehensive photos/videos and archive the signed original in the secure vault.' }
         ]
       }
@@ -1412,7 +1418,10 @@
             'Ninguna declaracion verbal cambia este aviso. Cualquier perdon, reduccion, saldo, liberacion o modificacion debe constar por escrito y estar firmado por EASYCAR LLC.'
           ]] },
           { type: 'p', text: 'SIGNATURES / FIRMAS' },
-          { type: 'table', rows: [['CUSTOMER / CLIENTE', 'EASYCAR LLC REPRESENTATIVE / REPRESENTANTE']] },
+          { type: 'table', rows: [[
+            'CUSTOMER / CLIENTE:\nSign/Firma: ______________________________________\nName/Nombre: ___________________________________\nDate/Fecha: ____/____/______',
+            'EASYCAR LLC REPRESENTATIVE / REPRESENTANTE:\nSign/Firma: ______________________________________\nName/Nombre: ___________________________________\nDate/Fecha: ____/____/______'
+          ]] },
           { type: 'p', text: 'EASYCAR LLC | This document is part of the signed vehicle contract, recovery file, and customer notice package.' }
         ]
       },
@@ -1464,7 +1473,10 @@
             'Ninguna declaracion verbal cambia este aviso escrito. Cualquier acuerdo para perdonar, reducir, saldar, liberar o modificar la cuenta debe constar por escrito y estar firmado por EASYCAR LLC.'
           ]] },
           { type: 'p', text: 'SIGNATURES / FIRMAS' },
-          { type: 'table', rows: [['CUSTOMER / CLIENTE', 'EASYCAR LLC REPRESENTATIVE / REPRESENTANTE']] },
+          { type: 'table', rows: [[
+            'CUSTOMER / CLIENTE:\nSign/Firma: ______________________________________\nName/Nombre: ___________________________________\nDate/Fecha: ____/____/______',
+            'EASYCAR LLC REPRESENTATIVE / REPRESENTANTE:\nSign/Firma: ______________________________________\nName/Nombre: ___________________________________\nDate/Fecha: ____/____/______'
+          ]] },
           { type: 'p', text: 'EASYCAR LLC | This document is part of the signed vehicle contract, recovery file, and customer notice package.' }
         ]
       }
@@ -2418,7 +2430,7 @@
       out = out.replace(/Date\/Fecha(?!:)/g, `Date/Fecha: ${transactionDate}`);
       out = out.replace(/Date \/ Fecha:\s*____\/____\/____/g, `Date / Fecha: ${transactionDate}`);
       out = out.replace(/Date \/ Fecha:\s*______ \/ ______ \/ 2026/g, `Date / Fecha: ${transactionDate}`);
-      out = out.replace(/Date \/ Fecha(?!\s+de\b|:)/g, `Date / Fecha: ${transactionDate}`);
+      out = out.replace(/Date \/ Fecha(?!\s+de\b|\s+Vencimiento\b|:)/g, `Date / Fecha: ${transactionDate}`);
       out = out.replace(/Date:\s*____\/____\/______/g, `Date: ${transactionDate}`);
       out = out.replace(new RegExp(`(Date / Fecha: ${transactionDate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?:${transactionDate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|20\\d{2})`, 'g'), `$1`);
       out = out.replace(new RegExp(`(Date(?: / Fecha|/Fecha)?(?: de la Transacción)?: ${transactionDate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})_+`, 'g'), '$1');

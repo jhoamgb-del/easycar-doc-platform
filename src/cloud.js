@@ -1077,7 +1077,9 @@ async function saveInsuranceGpsReview(formData) {
     || (isInsuranceAction ? formData.insurance_next_review_date : isGpsAction ? formData.gps_next_review_date : formData.insurance_next_review_date || formData.gps_next_review_date || null));
   const rows = [{
     module: 'insurance_gps',
-    event_type: repoConfirmed ? 'Reposicion confirmada' : formData.ops_action_type || formData.recovery_event_type || 'revision_realizada',
+    event_type: repoConfirmed
+      ? (formData.recovery_event_type === 'Entrega voluntaria' ? 'Entrega voluntaria confirmada' : 'Reposicion confirmada')
+      : formData.ops_action_type || formData.recovery_event_type || 'revision_realizada',
     status,
     follow_up_at: followUpAt,
     note: formData.insurance_gps_notes || null,
