@@ -46,6 +46,8 @@
     .deal-mode strong { display: block; margin: 4px 6px 6px; color: var(--muted); font-size: .68rem; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
     .sidebar-nav-label { display: block; margin: 14px 6px 6px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: .68rem; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
     .sidebar-nav-label:first-of-type { margin-top: 4px; padding-top: 0; border-top: 0; }
+    .sidebar-search { display: block; margin: 0 6px 12px; font-size: .68rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .sidebar-search input { display: block; width: 100%; margin-top: 4px; box-sizing: border-box; text-transform: none; font-weight: 400; letter-spacing: normal; }
     .mode-tabs { display: grid; gap: 2px; }
     .mode-tab { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; min-height: 40px; padding: 8px 10px; border: 0; border-left: 3px solid transparent; border-radius: 5px; background: transparent; color: var(--dark); cursor: pointer; }
     .mode-tab:hover { background: #eef4fb; }
@@ -322,7 +324,7 @@
     .schedule-hidden { display: none !important; }
     .ops-action { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 14px; border: 1px solid #b9cbe4; border-left: 5px solid var(--blue); border-radius: 6px; background: #f5f9ff; }
     .ops-action .status { margin: 0; flex: 1 1 260px; }
-    @media (max-width: 760px) {
+    @media screen and (max-width: 760px) {
       body { padding-bottom: env(safe-area-inset-bottom); }
       .site-header { padding: max(14px, env(safe-area-inset-top)) 16px 14px; }
       main { width: min(100% - 20px, 1180px); margin-top: 14px; }
@@ -344,7 +346,7 @@
       .actions button { width: 100%; }
       .panel.app-shell { display: block; padding: 12px; }
       .deal-mode { position: static; flex: none; max-height: none; overflow: visible; display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 6px; margin: 0 0 14px; padding: 4px 2px 10px; border-bottom: 1px solid var(--line); }
-      .deal-mode strong, .sidebar-nav-label { display: none; }
+      .deal-mode strong, .sidebar-nav-label, .sidebar-search { display: none; }
       .mode-tabs { display: flex; flex-wrap: nowrap; gap: 6px; }
       .mode-tab { flex: 0 0 auto; border-left: 0; border-bottom: 3px solid transparent; white-space: nowrap; }
       .mode-tab:has(input:checked) { border-left-color: transparent; border-bottom-color: var(--blue); }
@@ -399,8 +401,10 @@
         border-radius: 0;
         padding: 0;
         max-width: none;
+        width: auto;
         margin: 0;
         min-height: auto;
+        overflow: visible;
         page-break-after: always;
         break-after: page;
       }
@@ -494,6 +498,9 @@
     <section class="panel app-shell">
       <div class="deal-mode private-workspace" aria-label="Navegacion principal">
         <strong>DOC EASYCAR</strong>
+        <label class="sidebar-search private-workspace">Buscar cliente o VIN
+          <input id="globalClientSearch" autocomplete="off" placeholder="Nombre, VIN, ultimos 6...">
+        </label>
         <div class="mode-tabs">
           <label class="mode-tab">
             <input type="radio" name="sale_type_choice" id="sale_module_dashboard" value="DASHBOARD">
@@ -938,7 +945,7 @@
             <option value="No confirmado">No confirmado</option>
           </select>
         </label>
-        <label class="insurance-only">Repo confirmado / carro en dealer
+        <label class="insurance-only">Vehiculo desincorporado (repo confirmado en dealer o entrega voluntaria completada)
           <select id="recovery_repo_confirmed">
             <option value=""></option><option value="Si">Si</option><option value="No">No</option>
           </select>
@@ -1968,6 +1975,12 @@
       const firstDate = dateValue('pickup_start_date');
       const firstAmount = moneyValue('pickup_amount_1');
       const frequency = pickupFrequencyDisplay();
+      const refPairs = [
+        ['personal_ref1_name', 'personal_ref1_phone'],
+        ['personal_ref2_name', 'personal_ref2_phone'],
+        ['personal_ref3_name', 'personal_ref3_phone']
+      ];
+      const refCount = refPairs.filter(([nameId, phoneId]) => val(nameId) && val(phoneId)).length || 2;
       const lines = [
         `1. Saludo: "Buenos dias/tardes, le habla [su nombre] de EasyCar LLC. Le llamo para confirmar los datos de su compra."`,
         `   Cliente: ${name} | Vehiculo: ${car}`,
@@ -1979,7 +1992,7 @@
         `   - Que su direccion siga siendo la misma`,
         `   - Que su correo siga siendo el mismo`,
         `   - Si tiene otro telefono ademas del que ya nos dio`,
-        `4. Confirme las 2 referencias personales (nombre, telefono, relacion).`,
+        `4. Confirme las ${refCount} referencias personales registradas en el expediente (nombre, telefono, relacion).`,
         `5. Pregunte: ¿Recibio el carro en buen estado y limpio?`,
         `6. Pida que califique el dealer y ofrezca enviarle el enlace de resena de Google.`,
         `7. Si reporta un problema mecanico, anotelo y abra despues la pestana MECANICA para ese expediente.`,

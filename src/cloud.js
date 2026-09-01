@@ -89,6 +89,7 @@ const controls = {
   calendarConnectionStatus: byId('calendarConnectionStatus'),
   opsOperatorSummary: byId('opsOperatorSummary'),
   opsSearch: byId('opsSearch'),
+  globalClientSearch: byId('globalClientSearch'),
   clearOpsSearch: byId('clearOpsSearch'),
   opsResults: byId('opsResults'),
   operationHistory: byId('operationHistory'),
@@ -1064,7 +1065,7 @@ async function saveInsuranceGpsReview(formData) {
   if (formData.insurance_follow_up_path === 'Proceso de reposicion' && !formData.recovery_last_location) {
     throw new Error('En proceso de reposicion verifica el GPS y registra la ultima ubicacion del carro.');
   }
-  const repoConfirmed = formData.recovery_event_type === 'Repo' && formData.recovery_repo_confirmed === 'Si';
+  const repoConfirmed = ['Repo', 'Entrega voluntaria'].includes(formData.recovery_event_type) && formData.recovery_repo_confirmed === 'Si';
   if (formData.recovery_event_type === 'Repo') {
     if (!formData.recovery_event_date || !formData.recovery_last_location || !formData.recovery_policy_active_on_event || !formData.recovery_repo_confirmed) {
       throw new Error('Para reposicion registra fecha, ultima ubicacion, poliza activa ese dia y confirmacion del carro en dealer.');
@@ -1813,7 +1814,8 @@ function buildOpsProfile(sale, operations = [], activities = [], duplicateVinCou
   const insuranceInvalidated = false;
   const insuranceExpired = form.insurance_status === 'Vencido' || isPastDue(form.insurance_expiration_date);
   const insuranceRepossession = form.recovery_event_type === 'Repo';
-  const repoConfirmed = insuranceRepossession && form.recovery_repo_confirmed === 'Si';
+  const desincorporationEvent = ['Repo', 'Entrega voluntaria'].includes(form.recovery_event_type);
+  const repoConfirmed = desincorporationEvent && form.recovery_repo_confirmed === 'Si';
   const insuranceCancelledDays = insuranceCancelled ? daysBetween(form.insurance_cancelled_since) : null;
   const policyProblem = !form.insurance_policy_number
     || insurancePending
@@ -1901,7 +1903,9 @@ function buildOpsProfile(sale, operations = [], activities = [], duplicateVinCou
   if (noteProblem) alerts.push('Falta nota auditable');
   if (repoConfirmed) {
     alerts.length = 0;
-    alerts.push('Repo confirmado en dealer; revision rutinaria cerrada');
+    alerts.push(form.recovery_event_type === 'Entrega voluntaria'
+      ? 'Entrega voluntaria confirmada; vehiculo desincorporado, sin seguimiento activo'
+      : 'Repo confirmado en dealer; vehiculo desincorporado, sin seguimiento activo');
   }
   const critical = !repoConfirmed && (insuranceCancelled
     || insuranceExpired
@@ -1930,7 +1934,9 @@ function buildOpsProfile(sale, operations = [], activities = [], duplicateVinCou
 
 function primaryOpsAction(profile) {
   const form = profile.form;
-  if (profile.repoConfirmed) return 'Proceso cerrado: vehiculo confirmado en el dealer';
+  if (profile.repoConfirmed) return form.recovery_event_type === 'Entrega voluntaria'
+    ? 'Vehiculo desincorporado (entrega voluntaria); sin seguimiento activo'
+    : 'Vehiculo desincorporado (repo); sin seguimiento activo';
   if (form.gps_device_status === 'Desconectado') return 'SOS: localizar el vehiculo y verificar el GPS hoy';
   if (profile.insuranceCancelled || profile.insuranceExpired) return 'Contactar al cliente y resolver la poliza hoy';
   if (profile.gpsOutsideFlorida) return 'Confirmar ubicacion y escalar salida de Florida';
@@ -1951,7 +1957,7 @@ function primaryOpsAction(profile) {
 }
 
 function nextOpsDueText(profile) {
-  if (profile.repoConfirmed) return 'Revision rutinaria cerrada';
+  if (profile.repoConfirmed) return 'Vehiculo desincorporado - sin revision pendiente';
   const dates = [
     profile.form.insurance_next_review_date,
     profile.form.gps_next_review_date
@@ -2057,7 +2063,8 @@ const opsFilterTitles = {
   claims: 'Siniestros abiertos',
   gap_claim: 'Reclamos GAP abiertos',
   recovery: 'Reposiciones y entregas voluntarias',
-  operator: 'Auditoria del operador'
+  operator: 'Auditoria del operador',
+  duplicate_vin: 'VIN repetido en mas de una venta'
 };
 
 function activeOpsGroup() {
@@ -2463,7 +2470,7 @@ function showOpsHistory(profile) {
     profile.form.pickup_payment_count ? `${profile.form.pickup_payment_count} cuotas ${profile.form.pickup_frequency || ''}` : '',
     profile.form.pickup_start_date ? `Primera ${formatDateDisplay(profile.form.pickup_start_date)}` : ''
   ].filter(Boolean).join(' | ');
-  const severityLabel = profile.severity === 'critical' ? 'CRITICO' : profile.severity === 'attention' ? 'PENDIENTE' : profile.severity === 'closed' ? 'CERRADO' : 'AL DIA';
+  const severityLabel = profile.severity === 'critical' ? 'CRITICO' : profile.severity === 'attention' ? 'PENDIENTE' : profile.severity === 'closed' ? 'DESINCORPORADO' : 'AL DIA';
   controls.opsHistoryStatus.className = `ops-case-status ${profile.severity || ''}`.trim();
   controls.opsHistoryAction.textContent = primaryOpsAction(profile);
   controls.opsHistoryDue.textContent = `Proxima fecha: ${nextOpsDueText(profile)}`;
@@ -2640,7 +2647,19 @@ function calendarTasksForProfiles(profiles) {
       tasks.push({ key, label, priority, profile, time, note, activity });
     };
     const hasActivityLedger = (profile.activities || []).length > 0;
-    const pendingActivities = (profile.activities || []).filter(activity => activity.status === 'pending');
+    // A 'pending' insurance_review/gps_review activity only closes via the
+    // doc_sale_operations_close_review_tasks DB trigger, which fires exclusively for the
+    // explicit "Verificacion seguro"/"Verificacion GPS"/"Revision GPS" audit flow. An
+    // operator can also resolve the underlying issue through the regular data-entry save
+    // (Guardar datos de Seguro y GPS), which never touches doc_activities, so the row can
+    // stay stuck at 'pending' forever even after the case is fully verified. Once the
+    // live status is clean, stop surfacing that stale row as still pending.
+    const pendingActivities = (profile.activities || []).filter(activity => {
+      if (activity.status !== 'pending') return false;
+      if (activity.activity_type === 'insurance_review' && !profile.policyProblem) return false;
+      if (activity.activity_type === 'gps_review' && !profile.gpsProblem) return false;
+      return true;
+    });
     if (pendingActivities.length) {
       pendingActivities.forEach(activity => {
         const due = new Date(activity.due_at);
@@ -2820,7 +2839,7 @@ function renderOpsReport(profiles) {
     renderOpsMetric('Reclamo abierto', reclamoAbierto, 'claims_open', 'Seguro o GAP con reclamo activo', metricTone(reclamoAbierto)),
     renderOpsMetric('GPS vencido', gpsVencido, 'gps_overdue', 'Revision de GPS atrasada', metricTone(gpsVencido)),
     renderOpsMetric('GPS desconectado', gpsDesconectado, 'gps_sos', 'Dispositivo reporta desconectado', metricTone(gpsDesconectado)),
-    renderOpsMetric('VIN duplicado', vinDuplicado, 'duplicate_vin', 'Mismo VIN en mas de una venta', metricTone(vinDuplicado, 'warn')),
+    renderOpsMetric('VIN duplicado', vinDuplicado, 'duplicate_vin', 'Mismo VIN en mas de una venta -- normal si una de las ventas esta desincorporada (repo/entrega voluntaria)', metricTone(vinDuplicado, 'warn')),
     renderOpsMetric('Accion hoy', accionHoy, 'agenda', 'Trabajo pendiente o vencido', metricTone(accionHoy, 'warn')),
     renderOpsMetric('Seguro', seguroProblema, 'insurance', 'Casos que requieren atencion', metricTone(seguroProblema, 'warn')),
     renderOpsMetric('GPS', gpsProblema, 'gps', 'Casos que requieren atencion', metricTone(gpsProblema, 'warn')),
@@ -2906,7 +2925,7 @@ function renderOpsReport(profiles) {
       chip.textContent = text;
       statusLine.append(chip);
     };
-    addChip(profile.severity === 'critical' ? 'CRITICO' : profile.severity === 'attention' ? 'PENDIENTE' : profile.severity === 'closed' ? 'CERRADO' : 'AL DIA', profile.severity === 'critical' ? 'alert' : profile.severity === 'attention' ? 'warn' : 'ok');
+    addChip(profile.severity === 'critical' ? 'CRITICO' : profile.severity === 'attention' ? 'PENDIENTE' : profile.severity === 'closed' ? 'DESINCORPORADO' : 'AL DIA', profile.severity === 'critical' ? 'alert' : profile.severity === 'attention' ? 'warn' : 'ok');
     addChip(`Seguro: ${profile.form.insurance_status || 'Sin verificar'}`, profile.policyProblem ? 'alert' : 'ok');
     addChip(`GPS: ${profile.form.gps_device_status || 'Sin verificar'}`, profile.gpsProblem ? 'alert' : 'ok');
     if (profile.siniestroOpen) addChip('Siniestro', 'warn');
@@ -2959,7 +2978,7 @@ function exportOpsReport() {
     'Evento', 'Estatus GAP', 'Proxima accion', 'Fecha pendiente', 'Ultimo operador', 'Ultima actividad', 'Ultima nota'
   ];
   const rows = [headers, ...visibleProfiles.map(profile => [
-    profile.severity === 'critical' ? 'CRITICO' : profile.severity === 'attention' ? 'PENDIENTE' : profile.severity === 'closed' ? 'CERRADO' : 'AL DIA',
+    profile.severity === 'critical' ? 'CRITICO' : profile.severity === 'attention' ? 'PENDIENTE' : profile.severity === 'closed' ? 'DESINCORPORADO' : 'AL DIA',
     profile.sale.customer_name,
     profile.sale.customer_phone,
     profile.sale.customer_email,
@@ -3584,6 +3603,11 @@ if (!configured) {
   controls.opsSearch.addEventListener('input', () => renderOpsReport(opsProfilesCache));
   controls.clearOpsSearch.addEventListener('click', () => {
     controls.opsSearch.value = '';
+    renderOpsReport(opsProfilesCache);
+  });
+  controls.globalClientSearch?.addEventListener('input', () => {
+    controls.opsSearch.value = controls.globalClientSearch.value;
+    app.setActiveModule?.('DASHBOARD');
     renderOpsReport(opsProfilesCache);
   });
 
